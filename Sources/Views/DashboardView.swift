@@ -17,164 +17,162 @@ struct DashboardView: View {
                     gradient: Theme.primaryGradient)
 
                 // Top gauges row
-                GlassEffectContainer {
-                    HStack(spacing: 16) {
-                        // Health Score Gauge (Feature 2)
-                        GlassCard {
-                            VStack(spacing: 12) {
-                                let scoreColor = vm.healthScoreColor
-                                let gradient = LinearGradient(
-                                    colors: [
-                                        Color(red: scoreColor.r, green: scoreColor.g, blue: scoreColor.b),
-                                        Color(red: scoreColor.r, green: scoreColor.g, blue: scoreColor.b).opacity(0.6),
-                                    ],
-                                    startPoint: .topLeading, endPoint: .bottomTrailing)
-                                AnimatedCircularGauge(
-                                    value: Double(vm.systemHealthScore) / 100,
-                                    lineWidth: 10, gradient: gradient, size: 80
-                                )
-                                .overlay {
-                                    VStack(spacing: 1) {
-                                        Text("\(vm.systemHealthScore)")
-                                            .font(.system(size: 18, weight: .bold, design: .rounded))
-                                        Text("Health")
-                                            .font(.system(size: 9, weight: .medium))
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                Text(vm.systemHealthScore >= 80 ? "Good" : vm.systemHealthScore >= 50 ? "Fair" : "Poor")
-                                    .font(.system(size: 10, weight: .semibold))
-                                    .foregroundStyle(
-                                        Color(red: scoreColor.r, green: scoreColor.g, blue: scoreColor.b))
-                            }
-                            .frame(maxWidth: .infinity)
-                        }
-
-                        // CPU Gauge
-                        GlassCard {
-                            VStack(spacing: 12) {
-                                AnimatedCircularGauge(
-                                    value: (vm.cpuInfo?.usagePercentage ?? 0) / 100,
-                                    lineWidth: 10, gradient: Theme.primaryGradient, size: 80
-                                )
-                                .overlay {
-                                    VStack(spacing: 1) {
-                                        Text("\(Int(vm.cpuInfo?.usagePercentage ?? 0))%")
-                                            .font(.system(size: 18, weight: .bold, design: .rounded))
-                                        Text("CPU")
-                                            .font(.system(size: 9, weight: .medium))
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                HStack(spacing: 4) {
-                                    Text("\(vm.cpuInfo?.coreCount ?? 0) Cores")
-                                        .font(.system(size: 10))
+                HStack(spacing: 16) {
+                    // Health Score Gauge
+                    GlassCard {
+                        VStack(spacing: 12) {
+                            let scoreColor = vm.healthScoreColor
+                            let gradient = LinearGradient(
+                                colors: [
+                                    Color(red: scoreColor.r, green: scoreColor.g, blue: scoreColor.b),
+                                    Color(red: scoreColor.r, green: scoreColor.g, blue: scoreColor.b).opacity(0.6),
+                                ],
+                                startPoint: .topLeading, endPoint: .bottomTrailing)
+                            AnimatedCircularGauge(
+                                value: Double(vm.systemHealthScore) / 100,
+                                lineWidth: 10, gradient: gradient, size: 80
+                            )
+                            .overlay {
+                                VStack(spacing: 1) {
+                                    Text("\(vm.systemHealthScore)")
+                                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                                    Text("Health")
+                                        .font(.system(size: 9, weight: .medium))
                                         .foregroundStyle(.secondary)
-                                    if let temp = vm.cpuInfo?.temperature {
-                                        Text("•")
-                                            .font(.system(size: 10))
-                                            .foregroundStyle(.quaternary)
-                                        Text(String(format: "%.0f°C", temp))
-                                            .font(.system(size: 10, weight: .medium))
-                                            .foregroundStyle(temp > 80 ? Theme.danger : Theme.success)
-                                    }
                                 }
                             }
-                            .frame(maxWidth: .infinity)
+                            Text(vm.systemHealthScore >= 80 ? "Good" : vm.systemHealthScore >= 50 ? "Fair" : "Poor")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(
+                                    Color(red: scoreColor.r, green: scoreColor.g, blue: scoreColor.b))
                         }
+                        .frame(maxWidth: .infinity)
+                    }
 
-                        // RAM Gauge
-                        GlassCard {
-                            VStack(spacing: 12) {
-                                AnimatedCircularGauge(
-                                    value: (vm.memoryInfo?.usagePercentage ?? 0) / 100,
-                                    lineWidth: 10, gradient: Theme.successGradient, size: 80
-                                )
-                                .overlay {
-                                    VStack(spacing: 1) {
-                                        Text("\(Int(vm.memoryInfo?.usagePercentage ?? 0))%")
-                                            .font(.system(size: 18, weight: .bold, design: .rounded))
-                                        Text("RAM")
-                                            .font(.system(size: 9, weight: .medium))
-                                            .foregroundStyle(.secondary)
-                                    }
+                    // CPU Gauge
+                    GlassCard {
+                        VStack(spacing: 12) {
+                            AnimatedCircularGauge(
+                                value: (vm.cpuInfo?.usagePercentage ?? 0) / 100,
+                                lineWidth: 10, gradient: Theme.primaryGradient, size: 80
+                            )
+                            .overlay {
+                                VStack(spacing: 1) {
+                                    Text("\(Int(vm.cpuInfo?.usagePercentage ?? 0))%")
+                                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                                    Text("CPU")
+                                        .font(.system(size: 9, weight: .medium))
+                                        .foregroundStyle(.secondary)
                                 }
-                                Text(vm.memoryInfo?.formattedUsed ?? "N/A")
+                            }
+                            HStack(spacing: 4) {
+                                Text("\(vm.cpuInfo?.coreCount ?? 0) Cores")
                                     .font(.system(size: 10))
                                     .foregroundStyle(.secondary)
-                            }
-                            .frame(maxWidth: .infinity)
-                        }
-
-                        // Disk Gauge
-                        GlassCard {
-                            VStack(spacing: 12) {
-                                let diskPct =
-                                    vm.diskTotal > 0 ? Double(vm.diskUsed) / Double(vm.diskTotal) : 0
-                                AnimatedCircularGauge(
-                                    value: diskPct,
-                                    lineWidth: 10,
-                                    gradient: diskPct > 0.85
-                                        ? Theme.dangerGradient : Theme.primaryGradient,
-                                    size: 80
-                                )
-                                .overlay {
-                                    VStack(spacing: 1) {
-                                        Text("\(Int(diskPct * 100))%")
-                                            .font(.system(size: 18, weight: .bold, design: .rounded))
-                                        Text("Disk")
-                                            .font(.system(size: 9, weight: .medium))
-                                            .foregroundStyle(.secondary)
-                                    }
+                                if let temp = vm.cpuInfo?.temperature {
+                                    Text("•")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.quaternary)
+                                    Text(String(format: "%.0f°C", temp))
+                                        .font(.system(size: 10, weight: .medium))
+                                        .foregroundStyle(temp > 80 ? Theme.danger : Theme.success)
                                 }
-                                Text(
-                                    "\(ByteCountFormatter.string(fromByteCount: vm.diskFree, countStyle: .file)) free"
-                                )
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+
+                    // RAM Gauge
+                    GlassCard {
+                        VStack(spacing: 12) {
+                            AnimatedCircularGauge(
+                                value: (vm.memoryInfo?.usagePercentage ?? 0) / 100,
+                                lineWidth: 10, gradient: Theme.successGradient, size: 80
+                            )
+                            .overlay {
+                                VStack(spacing: 1) {
+                                    Text("\(Int(vm.memoryInfo?.usagePercentage ?? 0))%")
+                                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                                    Text("RAM")
+                                        .font(.system(size: 9, weight: .medium))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            Text(vm.memoryInfo?.formattedUsed ?? "N/A")
                                 .font(.system(size: 10))
                                 .foregroundStyle(.secondary)
-                            }
-                            .frame(maxWidth: .infinity)
                         }
+                        .frame(maxWidth: .infinity)
+                    }
 
-                        // Network
-                        GlassCard {
-                            VStack(spacing: 14) {
-                                ZStack {
-                                    Circle()
-                                        .fill(Theme.brand.opacity(0.1))
-                                        .frame(width: 80, height: 80)
-                                    VStack(spacing: 4) {
-                                        Image(systemName: "arrow.up.arrow.down.circle.fill")
-                                            .font(.system(size: 22))
-                                            .foregroundStyle(Theme.brand)
-                                        Text("Network")
-                                            .font(.system(size: 9, weight: .medium))
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                HStack(spacing: 12) {
-                                    VStack(spacing: 2) {
-                                        Image(systemName: "arrow.down")
-                                            .font(.system(size: 8))
-                                            .foregroundStyle(Theme.success)
-                                        Text(vm.networkInfo?.formattedDownload ?? "0 B/s")
-                                            .font(
-                                                .system(
-                                                    size: 9, weight: .medium, design: .monospaced))
-                                    }
-                                    VStack(spacing: 2) {
-                                        Image(systemName: "arrow.up")
-                                            .font(.system(size: 8))
-                                            .foregroundStyle(Theme.warning)
-                                        Text(vm.networkInfo?.formattedUpload ?? "0 B/s")
-                                            .font(
-                                                .system(
-                                                    size: 9, weight: .medium, design: .monospaced))
-                                    }
+                    // Disk Gauge
+                    GlassCard {
+                        VStack(spacing: 12) {
+                            let diskPct =
+                                vm.diskTotal > 0 ? Double(vm.diskUsed) / Double(vm.diskTotal) : 0
+                            AnimatedCircularGauge(
+                                value: diskPct,
+                                lineWidth: 10,
+                                gradient: diskPct > 0.85
+                                    ? Theme.dangerGradient : Theme.primaryGradient,
+                                size: 80
+                            )
+                            .overlay {
+                                VStack(spacing: 1) {
+                                    Text("\(Int(diskPct * 100))%")
+                                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                                    Text("Disk")
+                                        .font(.system(size: 9, weight: .medium))
+                                        .foregroundStyle(.secondary)
                                 }
                             }
-                            .frame(maxWidth: .infinity)
+                            Text(
+                                "\(ByteCountFormatter.string(fromByteCount: vm.diskFree, countStyle: .file)) free"
+                            )
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
                         }
+                        .frame(maxWidth: .infinity)
+                    }
+
+                    // Network
+                    GlassCard {
+                        VStack(spacing: 14) {
+                            ZStack {
+                                Circle()
+                                    .fill(Theme.brand.opacity(0.1))
+                                    .frame(width: 80, height: 80)
+                                VStack(spacing: 4) {
+                                    Image(systemName: "arrow.up.arrow.down.circle.fill")
+                                        .font(.system(size: 22))
+                                        .foregroundStyle(Theme.brand)
+                                    Text("Network")
+                                        .font(.system(size: 9, weight: .medium))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            HStack(spacing: 12) {
+                                VStack(spacing: 2) {
+                                    Image(systemName: "arrow.down")
+                                        .font(.system(size: 8))
+                                        .foregroundStyle(Theme.success)
+                                    Text(vm.networkInfo?.formattedDownload ?? "0 B/s")
+                                        .font(
+                                            .system(
+                                                size: 9, weight: .medium, design: .monospaced))
+                                }
+                                VStack(spacing: 2) {
+                                    Image(systemName: "arrow.up")
+                                        .font(.system(size: 8))
+                                        .foregroundStyle(Theme.warning)
+                                    Text(vm.networkInfo?.formattedUpload ?? "0 B/s")
+                                        .font(
+                                            .system(
+                                                size: 9, weight: .medium, design: .monospaced))
+                                }
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
                     }
                 }
 
@@ -314,35 +312,33 @@ struct DashboardView: View {
                 Text("Quick Actions")
                     .font(.system(size: 14, weight: .semibold))
 
-                GlassEffectContainer {
-                    LazyVGrid(
-                        columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4),
-                        spacing: 12
-                    ) {
-                        QuickAction(icon: "bolt.circle.fill", title: "Flash Clean") {
-                            vm.selectedNav = .junkCleaner
-                        }
-                        QuickAction(icon: "memorychip.fill", title: "Free Memory") {
-                            vm.selectedNav = .memory
-                        }
-                        QuickAction(icon: "arrow.up.doc.fill", title: "Large Files") {
-                            vm.selectedNav = .largeFiles
-                        }
-                        QuickAction(icon: "doc.on.doc.fill", title: "Duplicates") {
-                            vm.selectedNav = .duplicates
-                        }
-                        QuickAction(icon: "trash.square.fill", title: "Uninstall") {
-                            vm.selectedNav = .uninstaller
-                        }
-                        QuickAction(icon: "power.circle.fill", title: "Startup") {
-                            vm.selectedNav = .startup
-                        }
-                        QuickAction(icon: "lock.shield.fill", title: "Shredder") {
-                            vm.selectedNav = .shredder
-                        }
-                        QuickAction(icon: "wrench.and.screwdriver.fill", title: "Toolkit") {
-                            vm.selectedNav = .toolkit
-                        }
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4),
+                    spacing: 12
+                ) {
+                    QuickAction(icon: "bolt.circle.fill", title: "Flash Clean") {
+                        vm.selectedNav = .junkCleaner
+                    }
+                    QuickAction(icon: "memorychip.fill", title: "Free Memory") {
+                        vm.selectedNav = .memory
+                    }
+                    QuickAction(icon: "arrow.up.doc.fill", title: "Large Files") {
+                        vm.selectedNav = .largeFiles
+                    }
+                    QuickAction(icon: "doc.on.doc.fill", title: "Duplicates") {
+                        vm.selectedNav = .duplicates
+                    }
+                    QuickAction(icon: "trash.square.fill", title: "Uninstall") {
+                        vm.selectedNav = .uninstaller
+                    }
+                    QuickAction(icon: "power.circle.fill", title: "Startup") {
+                        vm.selectedNav = .startup
+                    }
+                    QuickAction(icon: "lock.shield.fill", title: "Shredder") {
+                        vm.selectedNav = .shredder
+                    }
+                    QuickAction(icon: "wrench.and.screwdriver.fill", title: "Toolkit") {
+                        vm.selectedNav = .toolkit
                     }
                 }
 
