@@ -5,6 +5,20 @@ All notable changes to Cleankeun will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-02-22
+
+### Fixed
+
+- **App "rusak" / cannot open** — App was not properly code-signed after bundle assembly; Gatekeeper rejected it because resources were added after the linker signature. Now the build script performs a full `codesign --force --deep` ad-hoc signing with entitlements after all resources are in place.
+- **Inconsistent app icon** — Replaced the old PyObjC-generated icon (broom/dots) with a new compiled Swift icon generator that matches the `CleankeunLogo.swift` design (blue gradient + sweep arc + sparkles). Dock icon, Finder icon, and in-app logo are now visually consistent.
+- **Menu bar icon** — Changed from `bubbles.and.sparkles.fill` to `sparkles` SF Symbol to better match the app's sparkle theme.
+
+### Changed
+
+- Build script now uses compiled Swift for icon generation instead of PyObjC (which was unavailable)
+- Build script creates proper entitlements and seals all resources into the code signature
+- Version bumped to 1.1.1
+
 ## [1.1.0] - 2026-02-22
 
 ### Fixed

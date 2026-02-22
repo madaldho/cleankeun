@@ -24,7 +24,7 @@ struct CleankeunApp: App {
         }
         .defaultSize(width: 1080, height: 720)
 
-        MenuBarExtra("Cleankeun", systemImage: "bubbles.and.sparkles.fill") {
+        MenuBarExtra("Cleankeun", systemImage: "sparkles") {
             MenuBarView()
                 .environmentObject(vm)
         }

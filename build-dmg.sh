@@ -3,18 +3,19 @@ set -e
 
 APP_NAME="Cleankeun"
 BUNDLE_ID="com.cleankeun.pro"
-VERSION="1.1.0"
+VERSION="1.1.1"
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="$PROJECT_DIR/.build/release"
 DIST_DIR="$PROJECT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 DMG_PATH="$DIST_DIR/$APP_NAME.dmg"
+ENTITLEMENTS="$DIST_DIR/Cleankeun.entitlements"
 
-echo "=== Building $APP_NAME Release ==="
+echo "=== Building $APP_NAME v$VERSION Release ==="
 
 # 1. Build release binary
-echo "[1/4] Building release binary..."
+echo "[1/6] Building release binary..."
 cd "$PROJECT_DIR"
 swift build -c release 2>&1
 BINARY="$BUILD_DIR/$APP_NAME"
@@ -26,21 +27,14 @@ fi
 echo "  Binary: $(du -h "$BINARY" | cut -f1) at $BINARY"
 
 # 2. Create .app bundle structure
-echo "[2/4] Creating app bundle..."
-
-# Preserve existing icon if present
-EXISTING_ICON=""
-if [ -f "$APP_BUNDLE/Contents/Resources/AppIcon.icns" ]; then
-    EXISTING_ICON="$(mktemp)"
-    cp "$APP_BUNDLE/Contents/Resources/AppIcon.icns" "$EXISTING_ICON"
-fi
-
+echo "[2/6] Creating app bundle..."
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_BUNDLE/Contents/MacOS"
 mkdir -p "$APP_BUNDLE/Contents/Resources"
 
 # Copy binary
 cp "$BINARY" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
+chmod 755 "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 
 # Create Info.plist
 cat > "$APP_BUNDLE/Contents/Info.plist" << PLIST
@@ -53,6 +47,8 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << PLIST
     <key>CFBundleExecutable</key>
     <string>${APP_NAME}</string>
     <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundleIconName</key>
     <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
     <string>${BUNDLE_ID}</string>
@@ -67,7 +63,7 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << PLIST
     <key>CFBundleShortVersionString</key>
     <string>${VERSION}</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>2</string>
     <key>LSMinimumSystemVersion</key>
     <string>26.0</string>
     <key>LSApplicationCategoryType</key>
@@ -91,152 +87,238 @@ echo -n "APPL????" > "$APP_BUNDLE/Contents/PkgInfo"
 
 echo "  App bundle created at $APP_BUNDLE"
 
-# 3. Generate app icon (blue brand icon using system tools)
-echo "[3/4] Generating app icon..."
+# 3. Generate app icon using compiled Swift (no PyObjC dependency)
+echo "[3/6] Generating app icon..."
+ICON_GENERATOR="$DIST_DIR/generate_icon.swift"
 ICONSET_DIR="$DIST_DIR/AppIcon.iconset"
 rm -rf "$ICONSET_DIR"
 mkdir -p "$ICONSET_DIR"
 
-# Create a simple branded icon using Python (available on macOS)
-python3 << 'PYEOF'
-import subprocess, os, sys
+cat > "$ICON_GENERATOR" << 'SWIFTEOF'
+import AppKit
+import Foundation
 
-dist_dir = os.environ.get("DIST_DIR", "dist")
-iconset_dir = os.path.join(dist_dir, "AppIcon.iconset")
+// Cleankeun Pro App Icon Generator
+// Design: Blue gradient rounded rect + sweep arc + sparkles
+// Matches the CleankeunLogo.swift SwiftUI view
 
-# Generate icon using sips and basic drawing via CoreGraphics (Objective-C bridge through Python)
-# We'll create a simple SVG-like approach using Python's built-in capabilities
-# and convert with sips
+func createIcon(size: Int) -> NSBitmapImageRep {
+    let s = CGFloat(size)
+    let rep = NSBitmapImageRep(
+        bitmapDataPlanes: nil,
+        pixelsWide: size,
+        pixelsHigh: size,
+        bitsPerSample: 8,
+        samplesPerPixel: 4,
+        hasAlpha: true,
+        isPlanar: false,
+        colorSpaceName: .calibratedRGB,
+        bytesPerRow: 0,
+        bitsPerPixel: 0
+    )!
 
-sizes = [16, 32, 64, 128, 256, 512, 1024]
+    let ctx = NSGraphicsContext(bitmapImageRep: rep)!
+    NSGraphicsContext.current = ctx
+    let cg = ctx.cgContext
 
-for size in sizes:
-    # Create a simple blue gradient icon using ImageMagick alternative
-    # Since we can't guarantee ImageMagick, use a simpler approach with Python
-    pass
+    let cornerRadius = s * 0.22
 
-# Use Cocoa/AppKit via PyObjC to create the icon
-try:
-    from AppKit import (NSImage, NSBezierPath, NSColor, NSGraphicsContext,
-                        NSBitmapImageRep, NSPNGFileType, NSGradient, NSFont,
-                        NSFontManager, NSString, NSMakeRect, NSMakePoint, NSMakeSize)
-    from Foundation import NSData
-    import math
+    // --- Background: blue gradient rounded rect ---
+    let bgPath = CGPath(roundedRect: CGRect(x: 0, y: 0, width: s, height: s),
+                        cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
+    cg.addPath(bgPath)
+    cg.clip()
 
-    def create_icon(size):
-        # Create bitmap
-        rep = NSBitmapImageRep.alloc().initWithBitmapDataPlanes_pixelsWide_pixelsHigh_bitsPerSample_samplesPerPixel_hasAlpha_isPlanar_colorSpaceName_bytesPerRow_bitsPerPixel_(
-            None, size, size, 8, 4, True, False, "NSCalibratedRGBColorSpace", 0, 0
-        )
-        ctx = NSGraphicsContext.graphicsContextWithBitmapImageRep_(rep)
-        NSGraphicsContext.setCurrentContext_(ctx)
+    let colorSpace = CGColorSpaceCreateDeviceRGB()
+    // Brand gradient: dark blue bottom -> light blue top
+    let gradientColors = [
+        CGColor(colorSpace: colorSpace, components: [0.0, 0.30, 0.80, 1.0])!,   // brand-dark
+        CGColor(colorSpace: colorSpace, components: [0.10, 0.55, 1.0, 1.0])!,    // brand
+        CGColor(colorSpace: colorSpace, components: [0.30, 0.66, 1.0, 1.0])!,    // brand-light
+    ] as CFArray
+    let gradient = CGGradient(colorsSpace: colorSpace, colors: gradientColors, locations: [0.0, 0.5, 1.0])!
+    cg.drawLinearGradient(gradient,
+                          start: CGPoint(x: s * 0.5, y: 0),
+                          end: CGPoint(x: s * 0.5, y: s),
+                          options: [])
 
-        s = float(size)
-        corner = s * 0.22
+    // --- Subtle top highlight for depth ---
+    cg.saveGState()
+    let overlayColors = [
+        CGColor(colorSpace: colorSpace, components: [1.0, 1.0, 1.0, 0.12])!,
+        CGColor(colorSpace: colorSpace, components: [1.0, 1.0, 1.0, 0.0])!,
+    ] as CFArray
+    let overlayGrad = CGGradient(colorsSpace: colorSpace, colors: overlayColors, locations: [0.0, 1.0])!
+    cg.drawLinearGradient(overlayGrad,
+                          start: CGPoint(x: s * 0.5, y: s),
+                          end: CGPoint(x: s * 0.5, y: s * 0.5),
+                          options: [])
+    cg.restoreGState()
 
-        # Rounded rect path
-        rect = NSMakeRect(0, 0, s, s)
-        path = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(rect, corner, corner)
+    // --- Sweep / clean arc ---
+    // Matching CleankeunLogo.swift: Circle().trim(from: 0.2, to: 0.9), rotated -45°
+    let cx = s * 0.5
+    let cy = s * 0.5
+    let arcRadius = s * 0.28
+    let lineWidth = s * 0.065
 
-        # Blue gradient background
-        color1 = NSColor.colorWithCalibratedRed_green_blue_alpha_(0.10, 0.55, 1.0, 1.0)  # #1A8CFF
-        color2 = NSColor.colorWithCalibratedRed_green_blue_alpha_(0.0, 0.4, 0.8, 1.0)    # #0066CC
-        gradient = NSGradient.alloc().initWithStartingColor_endingColor_(color2, color1)
-        gradient.drawInBezierPath_angle_(path, 90.0)
+    // SwiftUI angles: 0 = top (12 o'clock), clockwise
+    // CG angles: 0 = right (3 o'clock), counterclockwise
+    // trim(from: 0.2, to: 0.9) = 252° arc
+    // With -45° rotation
+    let startAngle = CGFloat.pi / 2 - (0.2 * 2 * .pi) + (CGFloat.pi / 4)
+    let endAngle = CGFloat.pi / 2 - (0.9 * 2 * .pi) + (CGFloat.pi / 4)
 
-        # Draw a sparkle/broom icon symbol using bezier paths
-        # Simple: draw a stylized "C" letter for Cleankeun
-        cx, cy = s * 0.5, s * 0.48
+    cg.saveGState()
+    cg.setStrokeColor(CGColor(colorSpace: colorSpace, components: [1.0, 1.0, 1.0, 0.9])!)
+    cg.setLineWidth(lineWidth)
+    cg.setLineCap(.round)
+    cg.addArc(center: CGPoint(x: cx, y: cy), radius: arcRadius,
+              startAngle: startAngle, endAngle: endAngle, clockwise: true)
+    cg.strokePath()
 
-        # Draw shield/broom shape - simplified sparkle icon
-        NSColor.whiteColor().setFill()
+    // Faded tail effect
+    cg.setStrokeColor(CGColor(colorSpace: colorSpace, components: [1.0, 1.0, 1.0, 0.3])!)
+    cg.setLineWidth(lineWidth * 1.5)
+    let fadeStart = startAngle - (startAngle - endAngle) * 0.6
+    cg.addArc(center: CGPoint(x: cx, y: cy), radius: arcRadius,
+              startAngle: fadeStart, endAngle: endAngle, clockwise: true)
+    cg.strokePath()
+    cg.restoreGState()
 
-        # Draw sparkle dots
-        spark_size = s * 0.04
-        sparkle_positions = [
-            (0.3, 0.72), (0.7, 0.72), (0.5, 0.28),
-            (0.25, 0.5), (0.75, 0.5),
-        ]
-        for px, py in sparkle_positions:
-            dot = NSBezierPath.bezierPathWithOvalInRect_(
-                NSMakeRect(s * px - spark_size, s * py - spark_size, spark_size * 2, spark_size * 2)
-            )
-            dot.fill()
+    // --- Large sparkle ---
+    drawSparkle(cg: cg, cx: cx - s * 0.12, cy: cy + s * 0.12, size: s * 0.20, color: colorSpace)
 
-        # Draw main broom/brush shape
-        broom = NSBezierPath.alloc().init()
-        # Handle
-        handle_w = s * 0.04
-        broom.moveToPoint_(NSMakePoint(cx - handle_w, s * 0.65))
-        broom.lineToPoint_(NSMakePoint(cx + handle_w, s * 0.65))
-        broom.lineToPoint_(NSMakePoint(cx + handle_w * 0.5, s * 0.35))
-        broom.lineToPoint_(NSMakePoint(cx - handle_w * 0.5, s * 0.35))
-        broom.closePath()
-        broom.fill()
+    // --- Small sparkle ---
+    drawSparkle(cg: cg, cx: cx + s * 0.18, cy: cy - s * 0.08, size: s * 0.10, color: colorSpace)
 
-        # Bristles (fan shape at bottom)
-        bristle = NSBezierPath.alloc().init()
-        bristle.moveToPoint_(NSMakePoint(cx - s * 0.15, s * 0.22))
-        bristle.lineToPoint_(NSMakePoint(cx + s * 0.15, s * 0.22))
-        bristle.lineToPoint_(NSMakePoint(cx + s * 0.08, s * 0.35))
-        bristle.lineToPoint_(NSMakePoint(cx - s * 0.08, s * 0.35))
-        bristle.closePath()
+    // --- Tiny sparkle ---
+    drawSparkle(cg: cg, cx: cx + s * 0.05, cy: cy + s * 0.25, size: s * 0.06, color: colorSpace, alpha: 0.6)
 
-        NSColor.colorWithCalibratedRed_green_blue_alpha_(1.0, 1.0, 1.0, 0.9).setFill()
-        bristle.fill()
+    ctx.flushGraphics()
+    NSGraphicsContext.current = nil
+    return rep
+}
 
-        ctx.flushGraphics()
+func drawSparkle(cg: CGContext, cx: CGFloat, cy: CGFloat, size: CGFloat, color: CGColorSpace, alpha: CGFloat = 0.95) {
+    let r = size / 2
+    let inner = r * 0.3
+    cg.saveGState()
+    cg.setFillColor(CGColor(colorSpace: color, components: [1.0, 1.0, 1.0, alpha])!)
 
-        # Save as PNG
-        data = rep.representationUsingType_properties_(NSPNGFileType, None)
-        return data
+    let path = CGMutablePath()
+    path.move(to: CGPoint(x: cx, y: cy + r))
+    path.addQuadCurve(to: CGPoint(x: cx + r, y: cy),
+                      control: CGPoint(x: cx + inner * 0.4, y: cy + inner * 0.4))
+    path.addQuadCurve(to: CGPoint(x: cx, y: cy - r),
+                      control: CGPoint(x: cx + inner * 0.4, y: cy - inner * 0.4))
+    path.addQuadCurve(to: CGPoint(x: cx - r, y: cy),
+                      control: CGPoint(x: cx - inner * 0.4, y: cy - inner * 0.4))
+    path.addQuadCurve(to: CGPoint(x: cx, y: cy + r),
+                      control: CGPoint(x: cx - inner * 0.4, y: cy + inner * 0.4))
+    path.closeSubpath()
 
-    for size in sizes:
-        data = create_icon(size)
-        if data:
-            name = f"icon_{size}x{size}.png"
-            path = os.path.join(iconset_dir, name)
-            data.writeToFile_atomically_(path, True)
+    cg.addPath(path)
+    cg.fillPath()
 
-            # Also create @2x versions
-            if size <= 512:
-                name_2x = f"icon_{size}x{size}@2x.png"
-                data_2x = create_icon(size * 2)
-                if data_2x:
-                    path_2x = os.path.join(iconset_dir, name_2x)
-                    data_2x.writeToFile_atomically_(path_2x, True)
+    // Glow
+    cg.setShadow(offset: .zero, blur: size * 0.4,
+                 color: CGColor(colorSpace: color, components: [1.0, 1.0, 1.0, alpha * 0.5])!)
+    cg.addPath(path)
+    cg.fillPath()
 
-    print("  Icon images generated successfully")
+    cg.restoreGState()
+}
 
-except ImportError as e:
-    print(f"  Warning: PyObjC not available ({e}), skipping icon generation")
-    sys.exit(0)
-PYEOF
+// --- Main ---
+let distDir = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "dist"
+let iconsetDir = "\(distDir)/AppIcon.iconset"
+
+let sizes: [(name: String, px: Int)] = [
+    ("icon_16x16", 16),
+    ("icon_16x16@2x", 32),
+    ("icon_32x32", 32),
+    ("icon_32x32@2x", 64),
+    ("icon_128x128", 128),
+    ("icon_128x128@2x", 256),
+    ("icon_256x256", 256),
+    ("icon_256x256@2x", 512),
+    ("icon_512x512", 512),
+    ("icon_512x512@2x", 1024),
+]
+
+for entry in sizes {
+    let rep = createIcon(size: entry.px)
+    let data = rep.representation(using: .png, properties: [:])!
+    try! data.write(to: URL(fileURLWithPath: "\(iconsetDir)/\(entry.name).png"))
+}
+
+print("  Icon images generated: \(sizes.count) sizes")
+SWIFTEOF
+
+# Compile and run the icon generator
+echo "  Compiling icon generator..."
+swiftc -o "$DIST_DIR/generate_icon" "$ICON_GENERATOR" -framework AppKit 2>&1
+echo "  Running icon generator..."
+"$DIST_DIR/generate_icon" "$DIST_DIR"
 
 # Convert iconset to icns
 if [ -d "$ICONSET_DIR" ] && [ "$(ls -A "$ICONSET_DIR" 2>/dev/null)" ]; then
-    iconutil -c icns "$ICONSET_DIR" -o "$APP_BUNDLE/Contents/Resources/AppIcon.icns" 2>/dev/null || echo "  Warning: iconutil failed, app will use default icon"
+    iconutil -c icns "$ICONSET_DIR" -o "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+    echo "  AppIcon.icns created successfully"
     rm -rf "$ICONSET_DIR"
-elif [ -n "$EXISTING_ICON" ] && [ -f "$EXISTING_ICON" ]; then
-    echo "  Restoring previously built icon..."
-    cp "$EXISTING_ICON" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
-    rm -f "$EXISTING_ICON"
 else
-    echo "  Warning: No icon images generated, app will use default icon"
+    echo "ERROR: Icon generation failed"
+    exit 1
 fi
 
-# 4. Create DMG
-echo "[4/4] Creating DMG installer..."
+# Cleanup icon generator
+rm -f "$DIST_DIR/generate_icon" "$ICON_GENERATOR"
+
+# 4. Create entitlements
+echo "[4/6] Creating entitlements..."
+cat > "$ENTITLEMENTS" << 'ENTEOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.app-sandbox</key>
+    <false/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+</dict>
+</plist>
+ENTEOF
+echo "  Entitlements created"
+
+# 5. Code sign the app bundle
+echo "[5/6] Code signing app bundle..."
+
+# Sign the entire bundle with ad-hoc signature and entitlements
+codesign --force --deep --sign - \
+    --entitlements "$ENTITLEMENTS" \
+    "$APP_BUNDLE" 2>&1
+
+# Verify signature
+echo "  Verifying signature..."
+codesign --verify --deep --strict "$APP_BUNDLE" 2>&1
+echo "  Code signing verified successfully"
+
+# Cleanup entitlements
+rm -f "$ENTITLEMENTS"
+
+# 6. Create DMG
+echo "[6/6] Creating DMG installer..."
 rm -f "$DMG_PATH"
 
-# Create a temporary DMG directory with app and Applications symlink
 DMG_STAGE="$DIST_DIR/dmg_stage"
 rm -rf "$DMG_STAGE"
 mkdir -p "$DMG_STAGE"
 cp -R "$APP_BUNDLE" "$DMG_STAGE/"
 ln -s /Applications "$DMG_STAGE/Applications"
 
-# Create DMG
 hdiutil create \
     -volname "$APP_NAME" \
     -srcfolder "$DMG_STAGE" \
@@ -248,8 +330,10 @@ rm -rf "$DMG_STAGE"
 
 echo ""
 echo "=== Build Complete ==="
-echo "  App:  $APP_BUNDLE"
-echo "  DMG:  $DMG_PATH"
-echo "  Size: $(du -h "$DMG_PATH" | cut -f1)"
+echo "  App:     $APP_BUNDLE"
+echo "  DMG:     $DMG_PATH"
+echo "  Size:    $(du -h "$DMG_PATH" | cut -f1)"
+echo "  Version: $VERSION"
+echo "  Signed:  ad-hoc with entitlements"
 echo ""
 echo "To install: Open the DMG and drag Cleankeun to Applications"
