@@ -9,37 +9,109 @@ import SwiftUI
 struct ToolkitView: View {
     @Environment(AppViewModel.self) var vm
     @State private var toolResults: [String: ToolResult] = [:]
-    @State private var activeIntroTool: String? = nil
     @State private var showTrashConfirm = false
+    @State private var showBrowserConfirm = false
+    @State private var showSpotlightConfirm = false
+    @State private var showLaunchServicesConfirm = false
+    @State private var showPurgeableConfirm = false
     @State private var trashItemCount = 0
     @State private var trashSize: Int64 = 0
     @State private var trashAccessDenied = false
+    @State private var toastMessage: String? = nil
 
     var body: some View {
-        if let tool = activeIntroTool, tool == "spotlight" {
-            IntroView(
-                title: "Reindex Spotlight",
-                description:
-                    "Spotlight allows you to quickly find any file, document, app, mail, and more. When the Spotlight search is not working correctly, rebuilding the Spotlight index can help you to resolve the issue.",
-                bullets: [
-                    "No results when searching your Mac",
-                    "Experiencing odd behavior when using Spotlight",
-                ],
-                icon: "magnifyingglass",
-                gradient: Theme.primaryGradient,
-                buttonTitle: "Start",
-                onBack: { activeIntroTool = nil },
-                onStart: {
-                    activeIntroTool = nil
-                    Task {
-                        await runTool("spotlight") {
-                            await ToolkitService.shared.rebuildSpotlight()
-                        }
-                    }
-                }
-            )
-        } else {
+        ZStack {
             toolkitContent
+
+            // Toast notification overlay
+            if let toast = toastMessage {
+                VStack {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(Theme.success)
+                        Text(toast)
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(.ultraThickMaterial)
+                            .glassEffect(.regular, in: .rect(cornerRadius: 10))
+                            .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
+                    )
+                    .transition(.move(edge: .top).combined(with: .opacity))
+
+                    Spacer()
+                }
+                .padding(.top, 12)
+                .zIndex(100)
+            }
+        }
+        .onAppear { refreshTrashInfo() }
+        // Trash confirmation
+        .alert("Empty Trash?", isPresented: $showTrashConfirm) {
+            Button("Cancel", role: .cancel) { }
+            Button("Empty Trash", role: .destructive) {
+                Task {
+                    await runTool("trash") { await ToolkitService.shared.emptyTrash() }
+                    refreshTrashInfo()
+                }
+            }
+        } message: {
+            if trashAccessDenied {
+                Text("Cleankeun can't read the Trash directly, but Finder can empty it. Proceed?")
+            } else {
+                Text("Permanently delete \(trashItemCount) items (\(ByteCountFormatter.string(fromByteCount: trashSize, countStyle: .file)))? This cannot be undone.")
+            }
+        }
+        // Browser cache confirmation
+        .alert("Clear Browser Data?", isPresented: $showBrowserConfirm) {
+            Button("Cancel", role: .cancel) { }
+            Button("Clear Data", role: .destructive) {
+                Task {
+                    await runTool("browser") { await ToolkitService.shared.clearBrowserData() }
+                    showToast("Browser cache cleared successfully")
+                }
+            }
+        } message: {
+            Text("This will clear cached data from Safari, Chrome, Firefox, and Arc. Websites may load slower temporarily as caches are rebuilt. Bookmarks and passwords are not affected.")
+        }
+        // Spotlight confirmation
+        .alert("Rebuild Spotlight Index?", isPresented: $showSpotlightConfirm) {
+            Button("Cancel", role: .cancel) { }
+            Button("Rebuild", role: .destructive) {
+                Task {
+                    await runTool("spotlight") { await ToolkitService.shared.rebuildSpotlight() }
+                    showToast("Spotlight reindex started — may take several minutes in the background")
+                }
+            }
+        } message: {
+            Text("This will erase and rebuild the entire Spotlight search index. Requires administrator password. Spotlight search may be slow or incomplete until reindexing finishes (can take 10-30 minutes).")
+        }
+        // Launch Services confirmation
+        .alert("Rebuild Launch Services?", isPresented: $showLaunchServicesConfirm) {
+            Button("Cancel", role: .cancel) { }
+            Button("Rebuild") {
+                Task {
+                    await runTool("launchservices") { await ToolkitService.shared.rebuildLaunchServices() }
+                    showToast("Launch Services database rebuilt")
+                }
+            }
+        } message: {
+            Text("This fixes the \"Open With\" menu when it shows duplicate apps or wrong file associations. The database will be rebuilt — Finder may momentarily refresh.")
+        }
+        // Purgeable space confirmation
+        .alert("Free Purgeable Disk Space?", isPresented: $showPurgeableConfirm) {
+            Button("Cancel", role: .cancel) { }
+            Button("Free Space") {
+                Task {
+                    await runTool("purgeable") { await ToolkitService.shared.freePurgeableSpace() }
+                    showToast("Purgeable space reclaimed")
+                }
+            }
+        } message: {
+            Text("macOS keeps purgeable data (old caches, Time Machine snapshots) that can be reclaimed when disk space is low. This forces macOS to release that space now. Requires administrator password.")
         }
     }
 
@@ -80,37 +152,32 @@ struct ToolkitView: View {
                 ) {
                     ToolCard(
                         icon: "safari.fill",
-                        title: "Clear Browser Data",
-                        description:
-                            "Clear cached data from Safari, Chrome, Firefox, and Arc to free disk space and fix web issues.",
+                        title: "Clear Browser Cache",
+                        description: "Clear cached data from Safari, Chrome, Firefox, and Arc. Bookmarks and passwords are not affected.",
                         color: Theme.brand,
                         result: toolResults["browser"]
                     ) {
-                        await runTool("browser") { await ToolkitService.shared.clearBrowserData() }
+                        showBrowserConfirm = true
                     }
 
                     ToolCard(
                         icon: "magnifyingglass.circle.fill",
                         title: "Rebuild Spotlight",
-                        description:
-                            "Reindex Spotlight search to fix missing results or slow searches. May take several minutes.",
+                        description: "Reindex Spotlight search database. Fixes missing search results and slow queries. Takes 10-30 min in background.",
                         color: Theme.brandDark,
                         result: toolResults["spotlight"]
                     ) {
-                        activeIntroTool = "spotlight"
+                        showSpotlightConfirm = true
                     }
 
                     ToolCard(
                         icon: "app.badge.checkmark",
                         title: "Rebuild Launch Services",
-                        description:
-                            "Fix duplicate 'Open With' entries and resolve file association problems.",
+                        description: "Fix duplicate entries in the \"Open With\" right-click menu and resolve wrong file type associations.",
                         color: Theme.warning,
                         result: toolResults["launchservices"]
                     ) {
-                        await runTool("launchservices") {
-                            await ToolkitService.shared.rebuildLaunchServices()
-                        }
+                        showLaunchServicesConfirm = true
                     }
 
                     ToolCard(
@@ -124,10 +191,7 @@ struct ToolkitView: View {
                         trashItemCount = info.itemCount
                         trashSize = info.totalSize
                         trashAccessDenied = info.accessDenied
-                        if info.accessDenied {
-                            // Can't read trash, but Finder can still empty it — ask user to confirm
-                            showTrashConfirm = true
-                        } else if info.itemCount == 0 {
+                        if !info.accessDenied && info.itemCount == 0 {
                             toolResults["trash"] = ToolResult(state: .success, message: "Trash is already empty")
                         } else {
                             showTrashConfirm = true
@@ -137,21 +201,17 @@ struct ToolkitView: View {
                     ToolCard(
                         icon: "internaldrive.fill",
                         title: "Free Purgeable Space",
-                        description:
-                            "Reclaim purgeable APFS disk space that macOS keeps as buffer for performance.",
+                        description: "Reclaim disk space held by macOS as purgeable (old caches, Time Machine snapshots). Requires admin password.",
                         color: Theme.success,
                         result: toolResults["purgeable"]
                     ) {
-                        await runTool("purgeable") {
-                            await ToolkitService.shared.freePurgeableSpace()
-                        }
+                        showPurgeableConfirm = true
                     }
 
                     ToolCard(
                         icon: "memorychip.fill",
                         title: "Optimize Memory",
-                        description:
-                            "Free up inactive memory and compressed pages to improve system responsiveness.",
+                        description: "Free up inactive RAM and compressed pages to improve responsiveness when your Mac feels sluggish.",
                         color: Theme.brand,
                         result: toolResults["memory"]
                     ) {
@@ -166,40 +226,25 @@ struct ToolkitView: View {
                             }
                             return (true, "Memory optimized")
                         }
+                        showToast("Memory optimization complete")
                     }
                 }
             }
             .padding(28)
         }
         .scrollIndicators(.hidden)
-        .onAppear { refreshTrashInfo() }
-        .alert("Empty Trash?", isPresented: $showTrashConfirm) {
-            Button("Cancel", role: .cancel) { }
-            Button("Empty Trash", role: .destructive) {
-                Task {
-                    await runTool("trash") { await ToolkitService.shared.emptyTrash() }
-                    refreshTrashInfo()
-                }
-            }
-        } message: {
-            if trashAccessDenied {
-                Text("Cleankeun can't read the Trash folder directly, but Finder can empty it for you. Proceed?")
-            } else {
-                Text("Permanently delete \(trashItemCount) items (\(ByteCountFormatter.string(fromByteCount: trashSize, countStyle: .file)))? This cannot be undone.")
-            }
-        }
     }
 
     private var trashDescription: String {
         let info = ToolkitService.shared.getTrashInfo()
         if info.accessDenied {
-            return "Click Run to empty Trash via Finder. Grant Full Disk Access in System Settings for detailed info."
+            return "Empty Trash via Finder. Grant Full Disk Access for detailed info."
         }
         if info.itemCount == 0 {
             return "Trash is empty — nothing to clean."
         }
         let size = ByteCountFormatter.string(fromByteCount: info.totalSize, countStyle: .file)
-        return "\(info.itemCount) items in Trash (\(size)). Permanently remove them to free up disk space."
+        return "\(info.itemCount) items in Trash (\(size)). Permanently delete to free disk space."
     }
 
     private func refreshTrashInfo() {
@@ -209,10 +254,22 @@ struct ToolkitView: View {
         trashAccessDenied = info.accessDenied
     }
 
+    private func showToast(_ message: String) {
+        withAnimation(.easeInOut(duration: 0.3)) {
+            toastMessage = message
+        }
+        Task {
+            try? await Task.sleep(for: .seconds(3))
+            withAnimation(.easeInOut(duration: 0.3)) {
+                toastMessage = nil
+            }
+        }
+    }
+
     private func runTool(
         _ key: String, action: @escaping () async -> (success: Bool, message: String)
     ) async {
-        toolResults[key] = ToolResult(state: .running, message: "")
+        toolResults[key] = ToolResult(state: .running, message: "Running...")
         let result = await action()
         toolResults[key] = ToolResult(
             state: result.success ? .success : .failed,
@@ -279,17 +336,24 @@ struct ToolCard: View {
                             ProgressView()
                                 .scaleEffect(0.55)
                                 .frame(width: 12, height: 12)
+                            Text("Running...")
+                                .font(.system(size: 11, weight: .semibold))
                         } else {
                             Image(systemName: "play.fill")
                                 .font(.system(size: 9))
+                            Text("Run")
+                                .font(.system(size: 11, weight: .semibold))
                         }
-                        Text("Run")
-                            .font(.system(size: 11, weight: .semibold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 20)
                     .padding(.vertical, 9)
-                    .background(color, in: RoundedRectangle(cornerRadius: 8))
+                    .background(
+                        result?.state == .running
+                            ? AnyShapeStyle(Color.gray)
+                            : AnyShapeStyle(color),
+                        in: RoundedRectangle(cornerRadius: 8)
+                    )
                     .contentShape(RoundedRectangle(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
@@ -314,19 +378,34 @@ struct ToolCard: View {
     private func resultLabel(_ result: ToolResult) -> some View {
         switch result.state {
         case .running:
-            Text("Running...")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(Theme.warning)
+            HStack(spacing: 4) {
+                ProgressView()
+                    .scaleEffect(0.5)
+                    .frame(width: 10, height: 10)
+                Text("Running...")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(Theme.warning)
+            }
         case .success:
-            Text(result.message)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(Theme.success)
-                .lineLimit(1)
+            HStack(spacing: 3) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 9))
+                    .foregroundStyle(Theme.success)
+                Text(result.message)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(Theme.success)
+                    .lineLimit(1)
+            }
         case .failed:
-            Text(result.message)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(Theme.danger)
-                .lineLimit(1)
+            HStack(spacing: 3) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 9))
+                    .foregroundStyle(Theme.danger)
+                Text(result.message)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(Theme.danger)
+                    .lineLimit(1)
+            }
         }
     }
 }

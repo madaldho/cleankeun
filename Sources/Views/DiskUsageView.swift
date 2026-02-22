@@ -775,16 +775,21 @@ private struct DiskTreeRow: View {
             : Color.orange
     }
 
+    /// Real Finder icon for the file/folder
+    private var finderIcon: NSImage {
+        NSWorkspace.shared.icon(forFile: item.path)
+    }
+
     var body: some View {
         Button {
             onSelect()
         } label: {
             HStack(spacing: 8) {
-                // File/folder icon
-                Image(systemName: item.isDirectory ? "folder.fill" : iconForFileExt(item.name))
-                    .font(.system(size: 12))
-                    .foregroundStyle(item.isDirectory ? Theme.brand : .secondary)
-                    .frame(width: 16)
+                // Real macOS file/folder icon from Finder
+                Image(nsImage: finderIcon)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 20, height: 20)
 
                 // Name + percentage bar
                 VStack(alignment: .leading, spacing: 3) {
@@ -854,20 +859,6 @@ private struct DiskTreeRow: View {
                     Label("Browse Directory", systemImage: "arrow.right.circle")
                 }
             }
-        }
-    }
-
-    private func iconForFileExt(_ name: String) -> String {
-        let ext = (name as NSString).pathExtension.lowercased()
-        switch ext {
-        case "app": return "app.fill"
-        case "dmg", "iso": return "opticaldiscdrive.fill"
-        case "zip", "tar", "gz", "rar", "7z": return "doc.zipper"
-        case "jpg", "jpeg", "png", "gif", "heic", "webp": return "photo"
-        case "mp4", "mov", "avi", "mkv": return "film"
-        case "mp3", "m4a", "wav", "flac": return "music.note"
-        case "pdf": return "doc.richtext"
-        default: return "doc"
         }
     }
 }

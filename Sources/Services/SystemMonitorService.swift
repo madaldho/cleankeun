@@ -261,7 +261,20 @@ class SystemMonitorService {
     }
 
     // MARK: - Disk Info
+    /// Returns disk total/free/used matching macOS System Settings.
+    /// Uses `volumeAvailableCapacityForImportantUsage` which includes purgeable space,
+    /// consistent with what macOS Settings > General > Storage displays.
     func getDiskInfo() -> (total: Int64, free: Int64, used: Int64) {
+        let url = URL(fileURLWithPath: NSHomeDirectory())
+        if let values = try? url.resourceValues(forKeys: [
+            .volumeTotalCapacityKey,
+            .volumeAvailableCapacityForImportantUsageKey
+        ]) {
+            let total = Int64(values.volumeTotalCapacity ?? 0)
+            let free = values.volumeAvailableCapacityForImportantUsage ?? 0
+            return (total, free, max(0, total - free))
+        }
+        // Fallback to FileManager
         do {
             let attrs = try FileManager.default.attributesOfFileSystem(forPath: NSHomeDirectory())
             let total = attrs[.systemSize] as? Int64 ?? 0

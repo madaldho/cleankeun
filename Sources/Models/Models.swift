@@ -44,33 +44,39 @@ enum JunkCategory: String, CaseIterable, Identifiable {
 
     var icon: String {
         switch self {
-        case .systemCache: return "internaldrive"
-        case .appCache: return "app.badge.checkmark"
-        case .logs: return "doc.text"
-        case .tempFiles: return "clock.arrow.circlepath"
-        case .browserCache: return "globe"
-        case .xcode: return "hammer"
-        case .mailCache: return "envelope"
-        case .crashReports: return "exclamationmark.triangle"
-        case .unusedDMGs: return "opticaldiscdrive"
+        case .systemCache: return "internaldrive.fill"
+        case .appCache: return "square.grid.3x3.fill"
+        case .logs: return "doc.text.fill"
+        case .tempFiles: return "clock.fill"
+        case .browserCache: return "safari.fill"
+        case .xcode: return "hammer.fill"
+        case .mailCache: return "envelope.fill"
+        case .crashReports: return "exclamationmark.triangle.fill"
+        case .unusedDMGs: return "opticaldiscdrive.fill"
         case .iOSBackups: return "iphone"
-        case .trash: return "trash"
+        case .trash: return "trash.fill"
         }
     }
 
+    /// BuhoCleaner-style grouped color scheme:
+    /// System junk = blue tones, User junk = teal/green tones, Browser/App = indigo/purple tones
     var color: (r: Double, g: Double, b: Double) {
         switch self {
-        case .systemCache: return (0.35, 0.55, 1.0)
-        case .appCache: return (0.55, 0.35, 1.0)
-        case .logs: return (1.0, 0.6, 0.25)
-        case .tempFiles: return (0.4, 0.8, 0.4)
-        case .browserCache: return (0.2, 0.78, 0.9)
-        case .xcode: return (1.0, 0.4, 0.4)
-        case .mailCache: return (1.0, 0.75, 0.3)
-        case .crashReports: return (0.9, 0.3, 0.3)
-        case .unusedDMGs: return (0.6, 0.4, 1.0)
-        case .iOSBackups: return (0.3, 0.7, 0.95)
-        case .trash: return (0.6, 0.6, 0.6)
+        // System group — blues
+        case .systemCache: return (0.30, 0.55, 0.90)
+        case .logs:        return (0.35, 0.60, 0.85)
+        case .tempFiles:   return (0.25, 0.50, 0.80)
+        case .crashReports: return (0.40, 0.55, 0.85)
+        // App/User group — teals
+        case .appCache:    return (0.20, 0.68, 0.65)
+        case .xcode:       return (0.22, 0.62, 0.72)
+        case .mailCache:   return (0.25, 0.70, 0.58)
+        case .iOSBackups:  return (0.18, 0.65, 0.70)
+        // Browser group — indigo
+        case .browserCache: return (0.40, 0.38, 0.82)
+        // Disk — muted
+        case .unusedDMGs:  return (0.55, 0.50, 0.75)
+        case .trash:       return (0.50, 0.50, 0.55)
         }
     }
 }
