@@ -3,7 +3,7 @@ set -e
 
 APP_NAME="Cleankeun"
 BUNDLE_ID="com.cleankeun.pro"
-VERSION="1.1.1"
+VERSION="1.1.2"
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="$PROJECT_DIR/.build/release"
@@ -12,31 +12,33 @@ APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 DMG_PATH="$DIST_DIR/$APP_NAME.dmg"
 ENTITLEMENTS="$DIST_DIR/Cleankeun.entitlements"
 
-echo "=== Building $APP_NAME v$VERSION Release ==="
+echo "=== Building $APP_NAME v$VERSION ==="
+echo ""
 
-# 1. Build release binary
-echo "[1/6] Building release binary..."
-cd "$PROJECT_DIR"
+# ─────────────────────────────────────────────
+# Step 1: Build release binary
+# ─────────────────────────────────────────────
+echo "[1/7] Compiling release binary..."
 swift build -c release 2>&1
 BINARY="$BUILD_DIR/$APP_NAME"
 
 if [ ! -f "$BINARY" ]; then
-    echo "ERROR: Release binary not found at $BINARY"
+    echo "ERROR: Binary not found at $BINARY"
     exit 1
 fi
-echo "  Binary: $(du -h "$BINARY" | cut -f1) at $BINARY"
+echo "  ✓ Binary $(du -h "$BINARY" | cut -f1)"
 
-# 2. Create .app bundle structure
-echo "[2/6] Creating app bundle..."
+# ─────────────────────────────────────────────
+# Step 2: Assemble .app bundle
+# ─────────────────────────────────────────────
+echo "[2/7] Assembling app bundle..."
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_BUNDLE/Contents/MacOS"
 mkdir -p "$APP_BUNDLE/Contents/Resources"
 
-# Copy binary
 cp "$BINARY" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 chmod 755 "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 
-# Create Info.plist
 cat > "$APP_BUNDLE/Contents/Info.plist" << PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -63,7 +65,7 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << PLIST
     <key>CFBundleShortVersionString</key>
     <string>${VERSION}</string>
     <key>CFBundleVersion</key>
-    <string>2</string>
+    <string>3</string>
     <key>LSMinimumSystemVersion</key>
     <string>26.0</string>
     <key>LSApplicationCategoryType</key>
@@ -82,14 +84,14 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << PLIST
 </plist>
 PLIST
 
-# Create PkgInfo
 echo -n "APPL????" > "$APP_BUNDLE/Contents/PkgInfo"
+echo "  ✓ App bundle assembled"
 
-echo "  App bundle created at $APP_BUNDLE"
-
-# 3. Generate app icon using compiled Swift (no PyObjC dependency)
-echo "[3/6] Generating app icon..."
-ICON_GENERATOR="$DIST_DIR/generate_icon.swift"
+# ─────────────────────────────────────────────
+# Step 3: Generate app icon (compiled Swift)
+# ─────────────────────────────────────────────
+echo "[3/7] Generating app icon..."
+ICON_GENERATOR="$DIST_DIR/_gen_icon.swift"
 ICONSET_DIR="$DIST_DIR/AppIcon.iconset"
 rm -rf "$ICONSET_DIR"
 mkdir -p "$ICONSET_DIR"
@@ -98,192 +100,197 @@ cat > "$ICON_GENERATOR" << 'SWIFTEOF'
 import AppKit
 import Foundation
 
-// Cleankeun Pro App Icon Generator
-// Design: Blue gradient rounded rect + sweep arc + sparkles
-// Matches the CleankeunLogo.swift SwiftUI view
-
 func createIcon(size: Int) -> NSBitmapImageRep {
     let s = CGFloat(size)
     let rep = NSBitmapImageRep(
-        bitmapDataPlanes: nil,
-        pixelsWide: size,
-        pixelsHigh: size,
-        bitsPerSample: 8,
-        samplesPerPixel: 4,
-        hasAlpha: true,
-        isPlanar: false,
-        colorSpaceName: .calibratedRGB,
-        bytesPerRow: 0,
-        bitsPerPixel: 0
-    )!
-
+        bitmapDataPlanes: nil, pixelsWide: size, pixelsHigh: size,
+        bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+        colorSpaceName: .calibratedRGB, bytesPerRow: 0, bitsPerPixel: 0)!
     let ctx = NSGraphicsContext(bitmapImageRep: rep)!
     NSGraphicsContext.current = ctx
     let cg = ctx.cgContext
+    let cs = CGColorSpaceCreateDeviceRGB()
 
-    let cornerRadius = s * 0.22
-
-    // --- Background: blue gradient rounded rect ---
+    // Rounded rect clip
     let bgPath = CGPath(roundedRect: CGRect(x: 0, y: 0, width: s, height: s),
-                        cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
-    cg.addPath(bgPath)
-    cg.clip()
+                        cornerWidth: s * 0.22, cornerHeight: s * 0.22, transform: nil)
+    cg.addPath(bgPath); cg.clip()
 
-    let colorSpace = CGColorSpaceCreateDeviceRGB()
-    // Brand gradient: dark blue bottom -> light blue top
-    let gradientColors = [
-        CGColor(colorSpace: colorSpace, components: [0.0, 0.30, 0.80, 1.0])!,   // brand-dark
-        CGColor(colorSpace: colorSpace, components: [0.10, 0.55, 1.0, 1.0])!,    // brand
-        CGColor(colorSpace: colorSpace, components: [0.30, 0.66, 1.0, 1.0])!,    // brand-light
-    ] as CFArray
-    let gradient = CGGradient(colorsSpace: colorSpace, colors: gradientColors, locations: [0.0, 0.5, 1.0])!
-    cg.drawLinearGradient(gradient,
-                          start: CGPoint(x: s * 0.5, y: 0),
-                          end: CGPoint(x: s * 0.5, y: s),
-                          options: [])
+    // Blue gradient
+    let gc = [CGColor(colorSpace: cs, components: [0.0, 0.30, 0.80, 1.0])!,
+              CGColor(colorSpace: cs, components: [0.10, 0.55, 1.0, 1.0])!,
+              CGColor(colorSpace: cs, components: [0.30, 0.66, 1.0, 1.0])!] as CFArray
+    let grad = CGGradient(colorsSpace: cs, colors: gc, locations: [0.0, 0.5, 1.0])!
+    cg.drawLinearGradient(grad, start: CGPoint(x: s/2, y: 0), end: CGPoint(x: s/2, y: s), options: [])
 
-    // --- Subtle top highlight for depth ---
+    // Top highlight
+    let oc = [CGColor(colorSpace: cs, components: [1,1,1,0.12])!,
+              CGColor(colorSpace: cs, components: [1,1,1,0])!] as CFArray
+    let og = CGGradient(colorsSpace: cs, colors: oc, locations: [0,1])!
+    cg.drawLinearGradient(og, start: CGPoint(x: s/2, y: s), end: CGPoint(x: s/2, y: s/2), options: [])
+
+    // Sweep arc
+    let cx = s * 0.5, cy = s * 0.5
+    let sa = CGFloat.pi/2 - (0.2*2 * .pi) + .pi/4
+    let ea = CGFloat.pi/2 - (0.9*2 * .pi) + .pi/4
     cg.saveGState()
-    let overlayColors = [
-        CGColor(colorSpace: colorSpace, components: [1.0, 1.0, 1.0, 0.12])!,
-        CGColor(colorSpace: colorSpace, components: [1.0, 1.0, 1.0, 0.0])!,
-    ] as CFArray
-    let overlayGrad = CGGradient(colorsSpace: colorSpace, colors: overlayColors, locations: [0.0, 1.0])!
-    cg.drawLinearGradient(overlayGrad,
-                          start: CGPoint(x: s * 0.5, y: s),
-                          end: CGPoint(x: s * 0.5, y: s * 0.5),
-                          options: [])
-    cg.restoreGState()
-
-    // --- Sweep / clean arc ---
-    // Matching CleankeunLogo.swift: Circle().trim(from: 0.2, to: 0.9), rotated -45°
-    let cx = s * 0.5
-    let cy = s * 0.5
-    let arcRadius = s * 0.28
-    let lineWidth = s * 0.065
-
-    // SwiftUI angles: 0 = top (12 o'clock), clockwise
-    // CG angles: 0 = right (3 o'clock), counterclockwise
-    // trim(from: 0.2, to: 0.9) = 252° arc
-    // With -45° rotation
-    let startAngle = CGFloat.pi / 2 - (0.2 * 2 * .pi) + (CGFloat.pi / 4)
-    let endAngle = CGFloat.pi / 2 - (0.9 * 2 * .pi) + (CGFloat.pi / 4)
-
-    cg.saveGState()
-    cg.setStrokeColor(CGColor(colorSpace: colorSpace, components: [1.0, 1.0, 1.0, 0.9])!)
-    cg.setLineWidth(lineWidth)
-    cg.setLineCap(.round)
-    cg.addArc(center: CGPoint(x: cx, y: cy), radius: arcRadius,
-              startAngle: startAngle, endAngle: endAngle, clockwise: true)
+    cg.setStrokeColor(CGColor(colorSpace: cs, components: [1,1,1,0.9])!)
+    cg.setLineWidth(s * 0.065); cg.setLineCap(.round)
+    cg.addArc(center: CGPoint(x: cx, y: cy), radius: s*0.28, startAngle: sa, endAngle: ea, clockwise: true)
     cg.strokePath()
-
-    // Faded tail effect
-    cg.setStrokeColor(CGColor(colorSpace: colorSpace, components: [1.0, 1.0, 1.0, 0.3])!)
-    cg.setLineWidth(lineWidth * 1.5)
-    let fadeStart = startAngle - (startAngle - endAngle) * 0.6
-    cg.addArc(center: CGPoint(x: cx, y: cy), radius: arcRadius,
-              startAngle: fadeStart, endAngle: endAngle, clockwise: true)
+    cg.setStrokeColor(CGColor(colorSpace: cs, components: [1,1,1,0.3])!)
+    cg.setLineWidth(s * 0.065 * 1.5)
+    cg.addArc(center: CGPoint(x: cx, y: cy), radius: s*0.28,
+              startAngle: sa - (sa - ea)*0.6, endAngle: ea, clockwise: true)
     cg.strokePath()
     cg.restoreGState()
 
-    // --- Large sparkle ---
-    drawSparkle(cg: cg, cx: cx - s * 0.12, cy: cy + s * 0.12, size: s * 0.20, color: colorSpace)
+    // Sparkles
+    func sparkle(_ x: CGFloat, _ y: CGFloat, _ sz: CGFloat, _ a: CGFloat = 0.95) {
+        let r = sz/2, inn = r*0.3
+        cg.saveGState()
+        cg.setFillColor(CGColor(colorSpace: cs, components: [1,1,1,a])!)
+        let p = CGMutablePath()
+        p.move(to: CGPoint(x: x, y: y+r))
+        p.addQuadCurve(to: CGPoint(x: x+r, y: y), control: CGPoint(x: x+inn*0.4, y: y+inn*0.4))
+        p.addQuadCurve(to: CGPoint(x: x, y: y-r), control: CGPoint(x: x+inn*0.4, y: y-inn*0.4))
+        p.addQuadCurve(to: CGPoint(x: x-r, y: y), control: CGPoint(x: x-inn*0.4, y: y-inn*0.4))
+        p.addQuadCurve(to: CGPoint(x: x, y: y+r), control: CGPoint(x: x-inn*0.4, y: y+inn*0.4))
+        p.closeSubpath()
+        cg.addPath(p); cg.fillPath()
+        cg.setShadow(offset: .zero, blur: sz*0.4,
+                     color: CGColor(colorSpace: cs, components: [1,1,1,a*0.5])!)
+        cg.addPath(p); cg.fillPath()
+        cg.restoreGState()
+    }
+    sparkle(cx - s*0.12, cy + s*0.12, s*0.20)
+    sparkle(cx + s*0.18, cy - s*0.08, s*0.10)
+    sparkle(cx + s*0.05, cy + s*0.25, s*0.06, 0.6)
 
-    // --- Small sparkle ---
-    drawSparkle(cg: cg, cx: cx + s * 0.18, cy: cy - s * 0.08, size: s * 0.10, color: colorSpace)
-
-    // --- Tiny sparkle ---
-    drawSparkle(cg: cg, cx: cx + s * 0.05, cy: cy + s * 0.25, size: s * 0.06, color: colorSpace, alpha: 0.6)
-
-    ctx.flushGraphics()
-    NSGraphicsContext.current = nil
+    ctx.flushGraphics(); NSGraphicsContext.current = nil
     return rep
 }
 
-func drawSparkle(cg: CGContext, cx: CGFloat, cy: CGFloat, size: CGFloat, color: CGColorSpace, alpha: CGFloat = 0.95) {
-    let r = size / 2
-    let inner = r * 0.3
-    cg.saveGState()
-    cg.setFillColor(CGColor(colorSpace: color, components: [1.0, 1.0, 1.0, alpha])!)
-
-    let path = CGMutablePath()
-    path.move(to: CGPoint(x: cx, y: cy + r))
-    path.addQuadCurve(to: CGPoint(x: cx + r, y: cy),
-                      control: CGPoint(x: cx + inner * 0.4, y: cy + inner * 0.4))
-    path.addQuadCurve(to: CGPoint(x: cx, y: cy - r),
-                      control: CGPoint(x: cx + inner * 0.4, y: cy - inner * 0.4))
-    path.addQuadCurve(to: CGPoint(x: cx - r, y: cy),
-                      control: CGPoint(x: cx - inner * 0.4, y: cy - inner * 0.4))
-    path.addQuadCurve(to: CGPoint(x: cx, y: cy + r),
-                      control: CGPoint(x: cx - inner * 0.4, y: cy + inner * 0.4))
-    path.closeSubpath()
-
-    cg.addPath(path)
-    cg.fillPath()
-
-    // Glow
-    cg.setShadow(offset: .zero, blur: size * 0.4,
-                 color: CGColor(colorSpace: color, components: [1.0, 1.0, 1.0, alpha * 0.5])!)
-    cg.addPath(path)
-    cg.fillPath()
-
-    cg.restoreGState()
+let dir = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "dist"
+let out = "\(dir)/AppIcon.iconset"
+for (name, px) in [("icon_16x16",16),("icon_16x16@2x",32),("icon_32x32",32),("icon_32x32@2x",64),
+                    ("icon_128x128",128),("icon_128x128@2x",256),("icon_256x256",256),
+                    ("icon_256x256@2x",512),("icon_512x512",512),("icon_512x512@2x",1024)] {
+    let d = createIcon(size: px).representation(using: .png, properties: [:])!
+    try! d.write(to: URL(fileURLWithPath: "\(out)/\(name).png"))
 }
-
-// --- Main ---
-let distDir = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "dist"
-let iconsetDir = "\(distDir)/AppIcon.iconset"
-
-let sizes: [(name: String, px: Int)] = [
-    ("icon_16x16", 16),
-    ("icon_16x16@2x", 32),
-    ("icon_32x32", 32),
-    ("icon_32x32@2x", 64),
-    ("icon_128x128", 128),
-    ("icon_128x128@2x", 256),
-    ("icon_256x256", 256),
-    ("icon_256x256@2x", 512),
-    ("icon_512x512", 512),
-    ("icon_512x512@2x", 1024),
-]
-
-for entry in sizes {
-    let rep = createIcon(size: entry.px)
-    let data = rep.representation(using: .png, properties: [:])!
-    try! data.write(to: URL(fileURLWithPath: "\(iconsetDir)/\(entry.name).png"))
-}
-
-print("  Icon images generated: \(sizes.count) sizes")
+print("  ✓ 10 icon sizes generated")
 SWIFTEOF
 
-# Compile and run the icon generator
-echo "  Compiling icon generator..."
-swiftc -o "$DIST_DIR/generate_icon" "$ICON_GENERATOR" -framework AppKit 2>&1
-echo "  Running icon generator..."
-"$DIST_DIR/generate_icon" "$DIST_DIR"
+swiftc -o "$DIST_DIR/_gen_icon" "$ICON_GENERATOR" -framework AppKit 2>&1
+"$DIST_DIR/_gen_icon" "$DIST_DIR"
+iconutil -c icns "$ICONSET_DIR" -o "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+echo "  ✓ AppIcon.icns created"
+rm -rf "$ICONSET_DIR" "$DIST_DIR/_gen_icon" "$ICON_GENERATOR"
 
-# Convert iconset to icns
-if [ -d "$ICONSET_DIR" ] && [ "$(ls -A "$ICONSET_DIR" 2>/dev/null)" ]; then
-    iconutil -c icns "$ICONSET_DIR" -o "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
-    echo "  AppIcon.icns created successfully"
-    rm -rf "$ICONSET_DIR"
-else
-    echo "ERROR: Icon generation failed"
-    exit 1
-fi
+# ─────────────────────────────────────────────
+# Step 4: Generate DMG background image
+# ─────────────────────────────────────────────
+echo "[4/7] Generating DMG background..."
+BG_GENERATOR="$DIST_DIR/_gen_bg.swift"
+BG_IMAGE="$DIST_DIR/_dmg_bg.png"
 
-# Cleanup icon generator
-rm -f "$DIST_DIR/generate_icon" "$ICON_GENERATOR"
+cat > "$BG_GENERATOR" << 'SWIFTEOF'
+import AppKit
+import Foundation
 
-# 4. Create entitlements
-echo "[4/6] Creating entitlements..."
+// DMG installer background — 660x400 (professional standard)
+// Dark gradient with subtle arrow pointing from app to Applications
+let w = 660, h = 400
+let rep = NSBitmapImageRep(
+    bitmapDataPlanes: nil, pixelsWide: w * 2, pixelsHigh: h * 2,
+    bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+    colorSpaceName: .calibratedRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+rep.size = NSSize(width: w, height: h) // @2x retina
+
+let ctx = NSGraphicsContext(bitmapImageRep: rep)!
+NSGraphicsContext.current = ctx
+let cg = ctx.cgContext
+let cs = CGColorSpaceCreateDeviceRGB()
+let W = CGFloat(w), H = CGFloat(h)
+
+// Scale for @2x
+cg.scaleBy(x: 2, y: 2)
+
+// Background gradient (dark)
+let bgc = [CGColor(colorSpace: cs, components: [0.06, 0.07, 0.12, 1])!,
+           CGColor(colorSpace: cs, components: [0.03, 0.04, 0.08, 1])!] as CFArray
+let bgg = CGGradient(colorsSpace: cs, colors: bgc, locations: [0, 1])!
+cg.drawLinearGradient(bgg, start: CGPoint(x: W/2, y: H), end: CGPoint(x: W/2, y: 0), options: [])
+
+// Subtle blue glow behind center
+cg.saveGState()
+let glowc = [CGColor(colorSpace: cs, components: [0.10, 0.40, 0.90, 0.08])!,
+             CGColor(colorSpace: cs, components: [0.10, 0.40, 0.90, 0.0])!] as CFArray
+let glowg = CGGradient(colorsSpace: cs, colors: glowc, locations: [0, 1])!
+cg.drawRadialGradient(glowg, startCenter: CGPoint(x: W/2, y: H*0.55), startRadius: 0,
+                      endCenter: CGPoint(x: W/2, y: H*0.55), endRadius: W*0.4, options: [])
+cg.restoreGState()
+
+// Arrow in center pointing right (app → Applications)
+let arrowY = H * 0.48
+let arrowX = W * 0.5
+let arrowLen: CGFloat = 40
+let arrowHead: CGFloat = 12
+
+cg.saveGState()
+cg.setStrokeColor(CGColor(colorSpace: cs, components: [1, 1, 1, 0.25])!)
+cg.setLineWidth(2.5)
+cg.setLineCap(.round)
+cg.setLineJoin(.round)
+
+// Line
+cg.move(to: CGPoint(x: arrowX - arrowLen/2, y: arrowY))
+cg.addLine(to: CGPoint(x: arrowX + arrowLen/2, y: arrowY))
+cg.strokePath()
+
+// Arrowhead
+cg.move(to: CGPoint(x: arrowX + arrowLen/2 - arrowHead, y: arrowY + arrowHead*0.6))
+cg.addLine(to: CGPoint(x: arrowX + arrowLen/2, y: arrowY))
+cg.addLine(to: CGPoint(x: arrowX + arrowLen/2 - arrowHead, y: arrowY - arrowHead*0.6))
+cg.strokePath()
+cg.restoreGState()
+
+// "Drag to install" text
+let attrs: [NSAttributedString.Key: Any] = [
+    .font: NSFont.systemFont(ofSize: 11, weight: .medium),
+    .foregroundColor: NSColor(calibratedWhite: 1.0, alpha: 0.3)
+]
+let text = NSAttributedString(string: "Drag to Applications to install", attributes: attrs)
+let textSize = text.size()
+text.draw(at: NSPoint(x: (W - textSize.width) / 2, y: H * 0.28))
+
+ctx.flushGraphics()
+NSGraphicsContext.current = nil
+
+let data = rep.representation(using: .png, properties: [:])!
+let outPath = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "dist/_dmg_bg.png"
+try! data.write(to: URL(fileURLWithPath: outPath))
+print("  ✓ DMG background generated (\(w)x\(h) @2x)")
+SWIFTEOF
+
+swiftc -o "$DIST_DIR/_gen_bg" "$BG_GENERATOR" -framework AppKit 2>&1
+"$DIST_DIR/_gen_bg" "$BG_IMAGE"
+rm -f "$DIST_DIR/_gen_bg" "$BG_GENERATOR"
+
+# ─────────────────────────────────────────────
+# Step 5: Code sign
+# ─────────────────────────────────────────────
+echo "[5/7] Code signing..."
+
+# Clean extended attributes before signing
+xattr -cr "$APP_BUNDLE"
+
 cat > "$ENTITLEMENTS" << 'ENTEOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>com.apple.security.app-sandbox</key>
-    <false/>
     <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
     <true/>
     <key>com.apple.security.cs.disable-library-validation</key>
@@ -291,49 +298,97 @@ cat > "$ENTITLEMENTS" << 'ENTEOF'
 </dict>
 </plist>
 ENTEOF
-echo "  Entitlements created"
 
-# 5. Code sign the app bundle
-echo "[5/6] Code signing app bundle..."
-
-# Sign the entire bundle with ad-hoc signature and entitlements
 codesign --force --deep --sign - \
     --entitlements "$ENTITLEMENTS" \
     "$APP_BUNDLE" 2>&1
 
-# Verify signature
-echo "  Verifying signature..."
 codesign --verify --deep --strict "$APP_BUNDLE" 2>&1
-echo "  Code signing verified successfully"
-
-# Cleanup entitlements
+echo "  ✓ Signed and verified"
 rm -f "$ENTITLEMENTS"
 
-# 6. Create DMG
-echo "[6/6] Creating DMG installer..."
+# ─────────────────────────────────────────────
+# Step 6: Create professional DMG with create-dmg
+# ─────────────────────────────────────────────
+echo "[6/7] Creating DMG installer..."
 rm -f "$DMG_PATH"
 
-DMG_STAGE="$DIST_DIR/dmg_stage"
-rm -rf "$DMG_STAGE"
-mkdir -p "$DMG_STAGE"
-cp -R "$APP_BUNDLE" "$DMG_STAGE/"
-ln -s /Applications "$DMG_STAGE/Applications"
+# Use create-dmg for professional DMG layout
+# Window size 660x400, app on left, Applications on right
+create-dmg \
+    --volname "$APP_NAME" \
+    --volicon "$APP_BUNDLE/Contents/Resources/AppIcon.icns" \
+    --background "$BG_IMAGE" \
+    --window-pos 200 120 \
+    --window-size 660 400 \
+    --icon-size 120 \
+    --icon "$APP_NAME.app" 160 190 \
+    --app-drop-link 500 190 \
+    --text-size 14 \
+    --hide-extension "$APP_NAME.app" \
+    --no-internet-enable \
+    "$DMG_PATH" \
+    "$APP_BUNDLE" \
+    2>&1 || {
+        # Fallback: if create-dmg not available, use hdiutil
+        echo "  create-dmg failed, falling back to hdiutil..."
+        DMG_STAGE="$DIST_DIR/dmg_stage"
+        rm -rf "$DMG_STAGE"
+        mkdir -p "$DMG_STAGE"
+        cp -R "$APP_BUNDLE" "$DMG_STAGE/"
+        ln -s /Applications "$DMG_STAGE/Applications"
+        xattr -cr "$DMG_STAGE/$APP_NAME.app"
+        hdiutil create -volname "$APP_NAME" -srcfolder "$DMG_STAGE" \
+            -ov -format UDZO "$DMG_PATH" 2>&1
+        rm -rf "$DMG_STAGE"
+    }
 
-hdiutil create \
-    -volname "$APP_NAME" \
-    -srcfolder "$DMG_STAGE" \
-    -ov \
-    -format UDZO \
-    "$DMG_PATH" 2>&1
+rm -f "$BG_IMAGE"
+echo "  ✓ DMG created: $(du -h "$DMG_PATH" | cut -f1)"
 
-rm -rf "$DMG_STAGE"
+# ─────────────────────────────────────────────
+# Step 7: Verify DMG
+# ─────────────────────────────────────────────
+echo "[7/7] Verifying DMG..."
+VERIFY_MOUNT="/tmp/cleankeun_verify_$$"
+hdiutil attach "$DMG_PATH" -mountpoint "$VERIFY_MOUNT" -nobrowse -quiet 2>&1
+
+if [ -d "$VERIFY_MOUNT/$APP_NAME.app/Contents/MacOS" ] && \
+   [ -f "$VERIFY_MOUNT/$APP_NAME.app/Contents/MacOS/$APP_NAME" ]; then
+    echo "  ✓ App bundle intact"
+    echo "  ✓ Binary: $(file "$VERIFY_MOUNT/$APP_NAME.app/Contents/MacOS/$APP_NAME" | sed 's/.*: //')"
+    echo "  ✓ Icon:   $(du -h "$VERIFY_MOUNT/$APP_NAME.app/Contents/Resources/AppIcon.icns" | cut -f1)"
+
+    if [ -L "$VERIFY_MOUNT/Applications" ]; then
+        echo "  ✓ Applications symlink present"
+    else
+        echo "  ⚠ No Applications symlink (create-dmg uses app-drop-link instead)"
+    fi
+
+    codesign --verify --deep --strict "$VERIFY_MOUNT/$APP_NAME.app" 2>&1 \
+        && echo "  ✓ Signature valid" \
+        || echo "  ✗ Signature invalid!"
+
+    CT=$(mdls -name kMDItemContentType -raw "$VERIFY_MOUNT/$APP_NAME.app" 2>/dev/null)
+    echo "  ✓ Content type: $CT"
+else
+    echo "  ✗ ERROR: DMG structure is broken!"
+    ls -la "$VERIFY_MOUNT/" 2>&1
+fi
+
+hdiutil detach "$VERIFY_MOUNT" -quiet 2>&1
 
 echo ""
-echo "=== Build Complete ==="
+echo "════════════════════════════════════════════"
+echo "  BUILD COMPLETE"
+echo "════════════════════════════════════════════"
 echo "  App:     $APP_BUNDLE"
 echo "  DMG:     $DMG_PATH"
 echo "  Size:    $(du -h "$DMG_PATH" | cut -f1)"
 echo "  Version: $VERSION"
-echo "  Signed:  ad-hoc with entitlements"
 echo ""
-echo "To install: Open the DMG and drag Cleankeun to Applications"
+echo "  Install:"
+echo "    1. Open Cleankeun.dmg"
+echo "    2. Drag Cleankeun → Applications"
+echo "    3. First launch: Right-click → Open → Open"
+echo "════════════════════════════════════════════"
