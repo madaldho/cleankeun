@@ -37,6 +37,7 @@ class AppViewModel {
     var junkItems: [JunkItem] = []
     var junkByCategory: [JunkCategory: [JunkItem]] = [:]
     var totalJunkSize: Int64 = 0
+    var trashAccessDenied: Bool = false
 
     // Apps
     var installedApps: [InstalledApp] = []
@@ -160,7 +161,7 @@ class AppViewModel {
         return recs
     }
 
-    // MARK: - Storage Categories (Feature 7)
+    // MARK: - Storage Categories (Feature 7 — macOS System Settings style)
     /// Public entry point — dispatches to background. Safe to call from MainActor.
     func scanStorageCategories() {
         guard !storageScanInProgress else { return }
@@ -176,40 +177,174 @@ class AppViewModel {
         }
     }
 
-    /// Heavy work — runs off main thread.
+    /// Heavy work — runs off main thread. Mimics macOS System Settings categories.
     nonisolated private static func computeStorageCategories(diskUsed: Int64) -> [StorageCategoryInfo] {
         let home = NSHomeDirectory()
-        let categoryPaths: [(StorageCategory, [String])] = [
-            (.apps, ["/Applications", "\(home)/Applications"]),
-            (.documents, ["\(home)/Documents", "\(home)/Desktop", "\(home)/Downloads"]),
-            (.media, ["\(home)/Pictures", "\(home)/Movies", "\(home)/Music"]),
-            (.developer, ["\(home)/Library/Developer", "\(home)/Developer"]),
-        ]
-
+        let fm = FileManager.default
         var results: [StorageCategoryInfo] = []
         var accountedSize: Int64 = 0
 
-        for (cat, paths) in categoryPaths {
-            var catSize: Int64 = 0
-            for path in paths {
-                catSize += directorySizeSync(path: path)
+        // 1. Applications — /Applications + ~/Applications
+        let appPaths = ["/Applications", "\(home)/Applications"]
+        var appTotal: Int64 = 0
+        var appSubs: [(String, Int64)] = []
+        for path in appPaths {
+            let s = directorySizeSync(path: path)
+            if s > 0 {
+                appSubs.append(((path as NSString).lastPathComponent, s))
+                appTotal += s
             }
-            results.append(StorageCategoryInfo(category: cat, size: catSize))
-            accountedSize += catSize
+        }
+        results.append(StorageCategoryInfo(category: .applications, size: appTotal, subPaths: appSubs))
+        accountedSize += appTotal
+
+        // 2. Developer — ~/Library/Developer + ~/Developer
+        let devPaths = ["\(home)/Library/Developer", "\(home)/Developer"]
+        var devTotal: Int64 = 0
+        var devSubs: [(String, Int64)] = []
+        for path in devPaths {
+            let s = directorySizeSync(path: path)
+            if s > 0 {
+                // Show sub-directories for detail
+                if let contents = try? fm.contentsOfDirectory(atPath: path) {
+                    for sub in contents.prefix(10) {
+                        let subPath = (path as NSString).appendingPathComponent(sub)
+                        let subSize = directorySizeSync(path: subPath)
+                        if subSize > 10_000_000 { // > 10MB
+                            devSubs.append((sub, subSize))
+                        }
+                    }
+                }
+                devTotal += s
+            }
+        }
+        devSubs.sort { $0.1 > $1.1 }
+        results.append(StorageCategoryInfo(category: .developer, size: devTotal, subPaths: devSubs))
+        accountedSize += devTotal
+
+        // 3. Documents — ~/Documents, ~/Desktop, ~/Downloads
+        let docPaths = ["\(home)/Documents", "\(home)/Desktop", "\(home)/Downloads"]
+        var docTotal: Int64 = 0
+        var docSubs: [(String, Int64)] = []
+        for path in docPaths {
+            let s = directorySizeSync(path: path)
+            if s > 0 {
+                docSubs.append(((path as NSString).lastPathComponent, s))
+                docTotal += s
+            }
+        }
+        results.append(StorageCategoryInfo(category: .documents, size: docTotal, subPaths: docSubs))
+        accountedSize += docTotal
+
+        // 4. Photos & Media — ~/Pictures, ~/Movies, ~/Music
+        let mediaPaths = ["\(home)/Pictures", "\(home)/Movies", "\(home)/Music"]
+        var mediaTotal: Int64 = 0
+        var mediaSubs: [(String, Int64)] = []
+        for path in mediaPaths {
+            let s = directorySizeSync(path: path)
+            if s > 0 {
+                mediaSubs.append(((path as NSString).lastPathComponent, s))
+                mediaTotal += s
+            }
+        }
+        results.append(StorageCategoryInfo(category: .media, size: mediaTotal, subPaths: mediaSubs))
+        accountedSize += mediaTotal
+
+        // 5. Mail — ~/Library/Mail
+        let mailPath = "\(home)/Library/Mail"
+        let mailSize = directorySizeSync(path: mailPath)
+        if mailSize > 0 {
+            results.append(StorageCategoryInfo(category: .mail, size: mailSize, subPaths: [("Mail Data", mailSize)]))
+            accountedSize += mailSize
         }
 
-        // System = Library minus Developer
+        // 6. Trash — ~/.Trash
+        let trashPath = "\(home)/.Trash"
+        let trashSize = directorySizeSync(path: trashPath)
+        if trashSize > 0 {
+            results.append(StorageCategoryInfo(category: .trash, size: trashSize, subPaths: [("Trash Items", trashSize)]))
+            accountedSize += trashSize
+        }
+
+        // 7. macOS — system volumes (Macintosh HD, VM, Preboot, Recovery)
+        // Parse from diskutil to get accurate system volume sizes
+        var macOSSize: Int64 = 0
+        var macOSSubs: [(String, Int64)] = []
+        let volumeNames = [
+            ("disk3s1", "macOS Volume"),
+            ("disk3s6", "VM Swap"),
+            ("disk3s2", "Preboot"),
+            ("disk3s3", "Recovery"),
+        ]
+        for (disk, label) in volumeNames {
+            let size = Self.diskutilVolumeUsedSpace(disk: disk)
+            if size > 0 {
+                macOSSubs.append((label, size))
+                macOSSize += size
+            }
+        }
+        if macOSSize > 0 {
+            results.append(StorageCategoryInfo(category: .macOS, size: macOSSize, subPaths: macOSSubs))
+            accountedSize += macOSSize
+        }
+
+        // 8. System Data — ~/Library (minus Developer, minus Mail) + caches/support
         let librarySize = directorySizeSync(path: "\(home)/Library")
-        let developerSize = results.first(where: { $0.category == .developer })?.size ?? 0
-        let systemSize = max(0, librarySize - developerSize)
-        results.append(StorageCategoryInfo(category: .system, size: systemSize))
-        accountedSize += systemSize
+        let systemDataSize = max(0, librarySize - devTotal - mailSize)
+        var sysSubs: [(String, Int64)] = []
+        // Show top sub-directories of ~/Library
+        let libSubDirs = ["Caches", "Application Support", "Containers", "Group Containers", "Logs", "Saved Application State"]
+        for sub in libSubDirs {
+            let subPath = "\(home)/Library/\(sub)"
+            let subSize = directorySizeSync(path: subPath)
+            if subSize > 10_000_000 { // > 10MB
+                sysSubs.append((sub, subSize))
+            }
+        }
+        sysSubs.sort { $0.1 > $1.1 }
+        results.append(StorageCategoryInfo(category: .systemData, size: systemDataSize, subPaths: sysSubs))
+        accountedSize += systemDataSize
 
-        // Other = used - accounted
+        // 9. Other — remaining used space not accounted for
         let otherSize = max(0, diskUsed - accountedSize)
-        results.append(StorageCategoryInfo(category: .other, size: otherSize))
+        if otherSize > 10_000_000 { // Only show if > 10MB
+            results.append(StorageCategoryInfo(category: .other, size: otherSize, subPaths: []))
+        }
 
-        return results.sorted { $0.size > $1.size }
+        return results.filter { $0.size > 0 }.sorted { $0.size > $1.size }
+    }
+
+    /// Parse `diskutil info <disk>` to get Volume Used Space in bytes
+    nonisolated private static func diskutilVolumeUsedSpace(disk: String) -> Int64 {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/diskutil")
+        process.arguments = ["info", disk]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+            process.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let output = String(data: data, encoding: .utf8) {
+                // Look for "Volume Used Space:" line with bytes in parentheses
+                for line in output.components(separatedBy: "\n") {
+                    if line.contains("Volume Used Space") || line.contains("Container Free Space") {
+                        // Parse bytes from "(12345678 Bytes)"
+                        if let range = line.range(of: "("),
+                           let endRange = line.range(of: " Bytes)") {
+                            let bytesStr = String(line[range.upperBound..<endRange.lowerBound])
+                            if let bytes = Int64(bytesStr) {
+                                return bytes
+                            }
+                        }
+                    }
+                }
+            }
+        } catch {
+            // Ignore — will return 0
+        }
+        return 0
     }
 
     var filteredApps: [InstalledApp] {
@@ -295,7 +430,7 @@ class AppViewModel {
         scanningFilesFound = 0
         statusMessage = "Scanning for junk files..."
 
-        let items = await Task.detached { [weak self] () -> [JunkItem] in
+        let scanResult = await Task.detached { [weak self] () -> JunkCleanerService.ScanResult in
             return await JunkCleanerService.shared.scanForJunk { path, count in
                 Task { @MainActor in
                     self?.scanningCurrentPath = path
@@ -304,6 +439,8 @@ class AppViewModel {
             }
         }.value
 
+        let items = scanResult.items
+        trashAccessDenied = scanResult.trashAccessDenied
         junkItems = items
         totalJunkSize = items.reduce(0) { $0 + $1.size }
         var grouped: [JunkCategory: [JunkItem]] = [:]
@@ -321,6 +458,16 @@ class AppViewModel {
         cleaningCurrentFile = ""
         cleaningFreedSoFar = 0
         statusMessage = "Permanently deleting files..."
+
+        // Handle purgeable space separately (virtual item, uses diskutil)
+        let purgeableSelected = junkItems.filter { $0.category == .purgeableSpace && $0.isSelected }
+        if !purgeableSelected.isEmpty {
+            cleaningCurrentFile = "Freeing purgeable space..."
+            let purgeResult = await ToolkitService.shared.freePurgeableSpace()
+            if purgeResult.success {
+                cleaningFreedSoFar += purgeableSelected.reduce(0) { $0 + $1.size }
+            }
+        }
 
         let itemsToClean = junkItems
         let result = await Task.detached { [weak self] () -> (deleted: Int, freedSpace: Int64, errors: [String]) in

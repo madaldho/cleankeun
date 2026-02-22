@@ -13,7 +13,6 @@ struct ToolkitView: View {
     @State private var showBrowserConfirm = false
     @State private var showSpotlightConfirm = false
     @State private var showLaunchServicesConfirm = false
-    @State private var showPurgeableConfirm = false
     @State private var trashItemCount = 0
     @State private var trashSize: Int64 = 0
     @State private var trashAccessDenied = false
@@ -101,18 +100,6 @@ struct ToolkitView: View {
         } message: {
             Text("This fixes the \"Open With\" menu when it shows duplicate apps or wrong file associations. The database will be rebuilt — Finder may momentarily refresh.")
         }
-        // Purgeable space confirmation
-        .alert("Free Purgeable Disk Space?", isPresented: $showPurgeableConfirm) {
-            Button("Cancel", role: .cancel) { }
-            Button("Free Space") {
-                Task {
-                    await runTool("purgeable") { await ToolkitService.shared.freePurgeableSpace() }
-                    showToast("Purgeable space reclaimed")
-                }
-            }
-        } message: {
-            Text("macOS keeps purgeable data (old caches, Time Machine snapshots) that can be reclaimed when disk space is low. This forces macOS to release that space now. Requires administrator password.")
-        }
     }
 
     private var toolkitContent: some View {
@@ -196,16 +183,6 @@ struct ToolkitView: View {
                         } else {
                             showTrashConfirm = true
                         }
-                    }
-
-                    ToolCard(
-                        icon: "internaldrive.fill",
-                        title: "Free Purgeable Space",
-                        description: "Reclaim disk space held by macOS as purgeable (old caches, Time Machine snapshots). Requires admin password.",
-                        color: Theme.success,
-                        result: toolResults["purgeable"]
-                    ) {
-                        showPurgeableConfirm = true
                     }
 
                     ToolCard(

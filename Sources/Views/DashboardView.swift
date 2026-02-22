@@ -203,110 +203,8 @@ struct DashboardView: View {
                     }
                 }
 
-                // Storage Bar (Feature 7 — multi-segment)
-                GlassCard {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Text("Storage")
-                                .font(.system(size: 14, weight: .semibold))
-                            Spacer()
-                            Text(
-                                "\(ByteCountFormatter.string(fromByteCount: vm.diskUsed, countStyle: .file)) / \(ByteCountFormatter.string(fromByteCount: vm.diskTotal, countStyle: .file))"
-                            )
-                            .font(.system(size: 12, design: .rounded))
-                            .foregroundStyle(.secondary)
-                        }
-
-                        if vm.diskTotal > 0 {
-                            // Multi-segment storage bar
-                            if !vm.storageCategories.isEmpty {
-                                GeometryReader { geo in
-                                    HStack(spacing: 1) {
-                                        ForEach(vm.storageCategories) { cat in
-                                            let pct = CGFloat(cat.size) / CGFloat(vm.diskTotal)
-                                            if pct > 0.005 {  // Only show segments > 0.5%
-                                                let catColor = Color(
-                                                    red: cat.category.color.r,
-                                                    green: cat.category.color.g,
-                                                    blue: cat.category.color.b)
-                                                RoundedRectangle(cornerRadius: 4)
-                                                    .fill(catColor)
-                                                    .frame(width: max(4, geo.size.width * pct))
-                                            }
-                                        }
-                                        // Free space
-                                        let freePct = CGFloat(vm.diskFree) / CGFloat(vm.diskTotal)
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .fill(Color.primary.opacity(0.08))
-                                            .frame(width: max(4, geo.size.width * freePct))
-                                    }
-                                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                                }
-                                .frame(height: 28)
-                            } else {
-                                // Fallback simple bar
-                                GeometryReader { geo in
-                                    let pct = CGFloat(vm.diskUsed) / CGFloat(vm.diskTotal)
-                                    ZStack(alignment: .leading) {
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .fill(.quaternary)
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .fill(
-                                                pct > 0.85
-                                                    ? Theme.dangerGradient : Theme.primaryGradient
-                                            )
-                                            .frame(width: geo.size.width * pct)
-                                            .animation(.easeInOut(duration: 0.8), value: pct)
-                                    }
-                                }
-                                .frame(height: 28)
-                            }
-
-                            // Category legend
-                            if !vm.storageCategories.isEmpty {
-                                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 6) {
-                                    ForEach(vm.storageCategories) { cat in
-                                        HStack(spacing: 4) {
-                                            Circle()
-                                                .fill(Color(
-                                                    red: cat.category.color.r,
-                                                    green: cat.category.color.g,
-                                                    blue: cat.category.color.b))
-                                                .frame(width: 8, height: 8)
-                                            Text(cat.category.rawValue)
-                                                .font(.system(size: 9))
-                                                .foregroundStyle(.secondary)
-                                            Text(cat.formattedSize)
-                                                .font(.system(size: 9, weight: .medium, design: .rounded))
-                                                .foregroundStyle(.primary)
-                                        }
-                                    }
-                                    HStack(spacing: 4) {
-                                        Circle().fill(Color.primary.opacity(0.15)).frame(width: 8, height: 8)
-                                        Text("Free")
-                                            .font(.system(size: 9))
-                                            .foregroundStyle(.secondary)
-                                        Text(ByteCountFormatter.string(fromByteCount: vm.diskFree, countStyle: .file))
-                                            .font(.system(size: 9, weight: .medium, design: .rounded))
-                                            .foregroundStyle(.primary)
-                                    }
-                                }
-                            } else {
-                                HStack {
-                                    HStack(spacing: 4) {
-                                        Circle().fill(Theme.brand).frame(width: 8, height: 8)
-                                        Text("Used").font(.system(size: 10)).foregroundStyle(.secondary)
-                                    }
-                                    HStack(spacing: 4) {
-                                        Circle().fill(.quaternary).frame(width: 8, height: 8)
-                                        Text("Available").font(.system(size: 10)).foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
-                                }
-                            }
-                        }
-                    }
-                }
+                // Storage Bar (Feature 7 — macOS System Settings style with expandable cards)
+                StorageOverviewCard()
 
                 // Quick Actions
                 Text("Quick Actions")
@@ -424,5 +322,209 @@ struct InfoPill: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+// MARK: - Storage Overview Card (macOS System Settings style)
+
+struct StorageOverviewCard: View {
+    @Environment(AppViewModel.self) var vm
+    @State private var expandedCategory: StorageCategory? = nil
+
+    var body: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 12) {
+                // Header
+                HStack {
+                    HStack(spacing: 6) {
+                        Image(systemName: "internaldrive.fill")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Theme.brand)
+                        Text("Storage")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    Spacer()
+                    Text(
+                        "\(ByteCountFormatter.string(fromByteCount: vm.diskUsed, countStyle: .file)) / \(ByteCountFormatter.string(fromByteCount: vm.diskTotal, countStyle: .file))"
+                    )
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundStyle(.secondary)
+                }
+
+                if vm.diskTotal > 0 {
+                    // Multi-segment storage bar (like macOS Settings)
+                    storageBar
+
+                    // Expandable category cards
+                    if !vm.storageCategories.isEmpty {
+                        VStack(spacing: 2) {
+                            ForEach(vm.storageCategories) { cat in
+                                StorageCategoryRow(
+                                    info: cat,
+                                    diskTotal: vm.diskTotal,
+                                    isExpanded: expandedCategory == cat.category,
+                                    onToggle: {
+                                        withAnimation(.easeInOut(duration: 0.2)) {
+                                            expandedCategory = expandedCategory == cat.category ? nil : cat.category
+                                        }
+                                    }
+                                )
+                            }
+                            // Free space row
+                            HStack(spacing: 10) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .fill(Color.primary.opacity(0.06))
+                                        .frame(width: 28, height: 28)
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 13))
+                                        .foregroundStyle(.green.opacity(0.7))
+                                }
+                                Text("Available")
+                                    .font(.system(size: 12, weight: .medium))
+                                Spacer()
+                                Text(ByteCountFormatter.string(fromByteCount: vm.diskFree, countStyle: .file))
+                                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                                // Empty space for alignment with arrows
+                                Color.clear.frame(width: 16, height: 16)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var storageBar: some View {
+        GeometryReader { geo in
+            HStack(spacing: 1) {
+                if !vm.storageCategories.isEmpty {
+                    ForEach(vm.storageCategories) { cat in
+                        let pct = CGFloat(cat.size) / CGFloat(vm.diskTotal)
+                        if pct > 0.005 {
+                            let catColor = Color(
+                                red: cat.category.color.r,
+                                green: cat.category.color.g,
+                                blue: cat.category.color.b)
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(catColor)
+                                .frame(width: max(3, geo.size.width * pct))
+                                .help("\(cat.category.rawValue): \(cat.formattedSize)")
+                        }
+                    }
+                }
+                // Free space
+                let freePct = CGFloat(vm.diskFree) / CGFloat(vm.diskTotal)
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(Color.primary.opacity(0.08))
+                    .frame(width: max(3, geo.size.width * freePct))
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 5))
+        }
+        .frame(height: 24)
+    }
+}
+
+// MARK: - Storage Category Row (expandable)
+
+private struct StorageCategoryRow: View {
+    let info: StorageCategoryInfo
+    let diskTotal: Int64
+    let isExpanded: Bool
+    let onToggle: () -> Void
+
+    @State private var isHovered = false
+
+    private var catColor: Color {
+        Color(red: info.category.color.r, green: info.category.color.g, blue: info.category.color.b)
+    }
+
+    private var pct: Double {
+        diskTotal > 0 ? Double(info.size) / Double(diskTotal) * 100 : 0
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Main row
+            Button(action: onToggle) {
+                HStack(spacing: 10) {
+                    // Icon
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(catColor.opacity(0.12))
+                            .frame(width: 28, height: 28)
+                        Image(systemName: info.category.icon)
+                            .font(.system(size: 13))
+                            .foregroundStyle(catColor)
+                    }
+
+                    // Name + percentage
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(info.category.rawValue)
+                            .font(.system(size: 12, weight: .medium))
+                        Text(String(format: "%.1f%%", pct))
+                            .font(.system(size: 9, design: .rounded))
+                            .foregroundStyle(.tertiary)
+                    }
+
+                    Spacer()
+
+                    // Size
+                    Text(info.formattedSize)
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(catColor)
+
+                    // Expand arrow
+                    if !info.subPaths.isEmpty {
+                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.tertiary)
+                            .frame(width: 16, height: 16)
+                    } else {
+                        Color.clear.frame(width: 16, height: 16)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .contentShape(Rectangle())
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(isHovered ? Color.primary.opacity(0.03) : Color.clear)
+                )
+            }
+            .buttonStyle(.plain)
+            .onHover { isHovered = $0 }
+
+            // Expanded sub-paths
+            if isExpanded && !info.subPaths.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(info.subPaths.indices, id: \.self) { idx in
+                        let sub = info.subPaths[idx]
+                        HStack(spacing: 8) {
+                            Color.clear.frame(width: 28)
+                            Image(systemName: "folder.fill")
+                                .font(.system(size: 9))
+                                .foregroundStyle(catColor.opacity(0.6))
+                            Text(sub.name)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                            Spacer()
+                            Text(ByteCountFormatter.string(fromByteCount: sub.size, countStyle: .file))
+                                .font(.system(size: 10, weight: .medium, design: .rounded))
+                                .foregroundStyle(.tertiary)
+                            Color.clear.frame(width: 16)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                    }
+                }
+                .padding(.bottom, 4)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
     }
 }

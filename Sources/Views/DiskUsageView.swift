@@ -198,33 +198,81 @@ private struct TreemapCell: View {
     let isHovered: Bool
     let onTap: () -> Void
 
-    var body: some View {
-        let showLabel = tr.rect.width > 50 && tr.rect.height > 28
+    /// Real Finder icon for the file/folder
+    private var finderIcon: NSImage {
+        NSWorkspace.shared.icon(forFile: tr.item.path)
+    }
 
+    // Size thresholds for different display modes
+    private var cellWidth: CGFloat { tr.rect.width }
+    private var cellHeight: CGFloat { tr.rect.height }
+    private var isLargeCell: Bool { cellWidth > 120 && cellHeight > 90 }
+    private var isMediumCell: Bool { cellWidth > 70 && cellHeight > 55 }
+    private var isSmallCell: Bool { cellWidth > 40 && cellHeight > 24 }
+
+    /// Dynamic icon size based on cell dimensions
+    private var iconSize: CGFloat {
+        if isLargeCell { return min(36, min(cellWidth, cellHeight) * 0.35) }
+        if isMediumCell { return min(24, min(cellWidth, cellHeight) * 0.3) }
+        return 0
+    }
+
+    /// Dynamic font size for the name label
+    private var nameFontSize: CGFloat {
+        if isLargeCell { return min(12, max(9, cellWidth / 12)) }
+        if isMediumCell { return min(10, max(8, cellWidth / 12)) }
+        return max(7, min(9, cellWidth / 10))
+    }
+
+    var body: some View {
         Button(action: onTap) {
-            ZStack(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(tr.color.opacity(isHovered ? 0.9 : 0.7))
+            ZStack {
+                // Background
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(tr.color.opacity(isHovered ? 0.85 : 0.65))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 3)
+                        RoundedRectangle(cornerRadius: 4)
                             .strokeBorder(Color.white.opacity(isHovered ? 0.5 : 0.15), lineWidth: 1)
                     )
 
-                if showLabel {
-                    VStack(alignment: .leading, spacing: 1) {
+                if isLargeCell || isMediumCell {
+                    // Large/Medium: centered icon + name + size
+                    VStack(spacing: isLargeCell ? 6 : 3) {
+                        Image(nsImage: finderIcon)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: iconSize, height: iconSize)
+                            .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
+
                         Text(tr.item.name)
-                            .font(.system(size: max(8, min(11, tr.rect.width / 10)), weight: .medium))
+                            .font(.system(size: nameFontSize, weight: .semibold))
                             .foregroundStyle(.white)
-                            .lineLimit(1)
+                            .lineLimit(isLargeCell ? 2 : 1)
                             .truncationMode(.middle)
-                        if tr.rect.height > 38 {
+                            .multilineTextAlignment(.center)
+                            .shadow(color: .black.opacity(0.4), radius: 1, y: 1)
+
+                        if isLargeCell || cellHeight > 70 {
                             Text(tr.item.formattedSize)
-                                .font(.system(size: max(7, min(9, tr.rect.width / 12)), weight: .regular))
-                                .foregroundStyle(.white.opacity(0.8))
+                                .font(.system(size: max(8, nameFontSize - 2), weight: .medium, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.85))
+                                .shadow(color: .black.opacity(0.3), radius: 1, y: 1)
                         }
                     }
-                    .padding(4)
+                    .padding(isLargeCell ? 8 : 4)
+                    .frame(maxWidth: cellWidth - 4, maxHeight: cellHeight - 4)
+                } else if isSmallCell {
+                    // Small: just name, top-left aligned
+                    Text(tr.item.name)
+                        .font(.system(size: max(7, min(9, cellWidth / 10)), weight: .medium))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .shadow(color: .black.opacity(0.3), radius: 1, y: 1)
+                        .padding(3)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
+                // Tiny cells: no label at all
             }
             .frame(width: max(1, tr.rect.width - 1), height: max(1, tr.rect.height - 1))
             .offset(x: tr.rect.minX + 0.5, y: tr.rect.minY + 0.5)

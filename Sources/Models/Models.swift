@@ -13,6 +13,8 @@ struct JunkItem: Identifiable, Hashable {
     let path: String
     let size: Int64
     let category: JunkCategory
+    /// For browser cache items, identifies the source browser (e.g. "Safari", "Chrome")
+    let browserApp: BrowserApp?
     var isSelected: Bool = true
 
     var formattedSize: String {
@@ -23,60 +25,132 @@ struct JunkItem: Identifiable, Hashable {
         (path as NSString).lastPathComponent
     }
 
+    init(path: String, size: Int64, category: JunkCategory, browserApp: BrowserApp? = nil, isSelected: Bool = true) {
+        self.path = path
+        self.size = size
+        self.category = category
+        self.browserApp = browserApp
+        self.isSelected = isSelected
+    }
+
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
     static func == (lhs: JunkItem, rhs: JunkItem) -> Bool { lhs.id == rhs.id && lhs.isSelected == rhs.isSelected }
 }
 
-enum JunkCategory: String, CaseIterable, Identifiable {
-    case systemCache = "System Cache"
-    case appCache = "Application Cache"
-    case logs = "System Logs"
-    case tempFiles = "Temporary Files"
-    case browserCache = "Browser Cache"
-    case xcode = "Xcode Cache"
-    case mailCache = "Mail Cache"
-    case crashReports = "Crash Reports"
-    case unusedDMGs = "Unused DMGs"
-    case iOSBackups = "iOS Backups"
-    case trash = "Trash"
+/// Known browser apps for per-browser cache grouping
+enum BrowserApp: String, CaseIterable, Identifiable {
+    case safari = "Safari"
+    case chrome = "Google Chrome"
+    case firefox = "Firefox"
+    case arc = "Arc"
+    case brave = "Brave Browser"
+    case edge = "Microsoft Edge"
+    case opera = "Opera"
 
     var id: String { rawValue }
 
-    var icon: String {
+    /// Path to the .app bundle for icon retrieval
+    var appPath: String {
         switch self {
-        case .systemCache: return "internaldrive.fill"
-        case .appCache: return "square.grid.3x3.fill"
-        case .logs: return "doc.text.fill"
-        case .tempFiles: return "clock.fill"
-        case .browserCache: return "safari.fill"
-        case .xcode: return "hammer.fill"
-        case .mailCache: return "envelope.fill"
-        case .crashReports: return "exclamationmark.triangle.fill"
-        case .unusedDMGs: return "opticaldiscdrive.fill"
-        case .iOSBackups: return "iphone"
-        case .trash: return "trash.fill"
+        case .safari: return "/Applications/Safari.app"
+        case .chrome: return "/Applications/Google Chrome.app"
+        case .firefox: return "/Applications/Firefox.app"
+        case .arc: return "/Applications/Arc.app"
+        case .brave: return "/Applications/Brave Browser.app"
+        case .edge: return "/Applications/Microsoft Edge.app"
+        case .opera: return "/Applications/Opera.app"
         }
     }
 
-    /// BuhoCleaner-style grouped color scheme:
-    /// System junk = blue tones, User junk = teal/green tones, Browser/App = indigo/purple tones
+    /// System image fallback if app is not installed
+    var fallbackIcon: String {
+        switch self {
+        case .safari: return "safari.fill"
+        case .chrome: return "globe"
+        case .firefox: return "flame.fill"
+        case .arc: return "globe"
+        case .brave: return "shield.fill"
+        case .edge: return "globe"
+        case .opera: return "globe"
+        }
+    }
+}
+
+enum JunkCategory: String, CaseIterable, Identifiable {
+    // Order matches BuhoCleaner's Flash Clean panel
+    case purgeableSpace = "Purgeable Space"
+    case systemCache = "System Cache Files"
+    case userCache = "User Cache Files"
+    case xcode = "Xcode Junk"
+    case browserCache = "Browser Cache"
+    case systemLogs = "System Log Files"
+    case crashReports = "Crash Reports"
+    case unusedDMGs = "Unused DMG Files"
+    case userLogs = "User Log Files"
+    case trashCan = "Trash Can"
+    case downloads = "Downloads"
+    case screenCaptures = "Screen Capture Files"
+    case mailAttachments = "Mail Attachments"
+    case iOSBackups = "iOS Backups"
+
+    var id: String { rawValue }
+
+    /// Categories that are safe to auto-select for cleaning ("smart selection").
+    /// Only caches and logs — data that apps/system will regenerate.
+    var isSafeToAutoSelect: Bool {
+        switch self {
+        case .systemCache, .userCache, .systemLogs, .userLogs, .crashReports:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Whether this category represents a virtual/special item (not normal file deletion)
+    var isVirtual: Bool {
+        self == .purgeableSpace
+    }
+
+    var icon: String {
+        switch self {
+        case .purgeableSpace: return "internaldrive.fill"
+        case .systemCache: return "gearshape.2.fill"
+        case .userCache: return "square.grid.3x3.fill"
+        case .xcode: return "hammer.fill"
+        case .browserCache: return "safari.fill"
+        case .systemLogs: return "doc.text.fill"
+        case .crashReports: return "exclamationmark.triangle.fill"
+        case .unusedDMGs: return "opticaldiscdrive.fill"
+        case .userLogs: return "doc.text.fill"
+        case .trashCan: return "trash.fill"
+        case .downloads: return "arrow.down.circle.fill"
+        case .screenCaptures: return "camera.viewfinder"
+        case .mailAttachments: return "envelope.fill"
+        case .iOSBackups: return "iphone"
+        }
+    }
+
+    /// BuhoCleaner-style grouped color scheme
     var color: (r: Double, g: Double, b: Double) {
         switch self {
         // System group — blues
+        case .purgeableSpace: return (0.50, 0.50, 0.55)
         case .systemCache: return (0.30, 0.55, 0.90)
-        case .logs:        return (0.35, 0.60, 0.85)
-        case .tempFiles:   return (0.25, 0.50, 0.80)
+        case .systemLogs: return (0.35, 0.60, 0.85)
         case .crashReports: return (0.40, 0.55, 0.85)
-        // App/User group — teals
-        case .appCache:    return (0.20, 0.68, 0.65)
-        case .xcode:       return (0.22, 0.62, 0.72)
-        case .mailCache:   return (0.25, 0.70, 0.58)
-        case .iOSBackups:  return (0.18, 0.65, 0.70)
+        // User group — teals
+        case .userCache: return (0.20, 0.68, 0.65)
+        case .xcode: return (0.22, 0.62, 0.72)
+        case .userLogs: return (0.25, 0.65, 0.80)
+        case .mailAttachments: return (0.25, 0.70, 0.58)
+        case .iOSBackups: return (0.18, 0.65, 0.70)
         // Browser group — indigo
         case .browserCache: return (0.40, 0.38, 0.82)
-        // Disk — muted
-        case .unusedDMGs:  return (0.55, 0.50, 0.75)
-        case .trash:       return (0.50, 0.50, 0.55)
+        // Disk/Files — warm tones
+        case .unusedDMGs: return (0.55, 0.50, 0.75)
+        case .trashCan: return (0.60, 0.45, 0.45)
+        case .downloads: return (0.30, 0.70, 0.95)
+        case .screenCaptures: return (0.85, 0.55, 0.25)
         }
     }
 }
@@ -390,35 +464,44 @@ enum StartupImpact: String {
     }
 }
 
-// MARK: - Storage Category (Feature 7)
+// MARK: - Storage Category (Feature 7 — matches macOS System Settings)
 enum StorageCategory: String, CaseIterable, Identifiable {
-    case apps = "Apps"
-    case documents = "Documents"
-    case media = "Media"
+    case applications = "Applications"
     case developer = "Developer"
-    case system = "System"
+    case documents = "Documents"
+    case media = "Photos & Media"
+    case mail = "Mail"
+    case macOS = "macOS"
+    case systemData = "System Data"
+    case trash = "Trash"
     case other = "Other"
 
     var id: String { rawValue }
 
     var icon: String {
         switch self {
-        case .apps: return "app.fill"
+        case .applications: return "app.fill"
+        case .developer: return "hammer.fill"
         case .documents: return "doc.fill"
         case .media: return "photo.on.rectangle.fill"
-        case .developer: return "hammer.fill"
-        case .system: return "gearshape.fill"
+        case .mail: return "envelope.fill"
+        case .macOS: return "applelogo"
+        case .systemData: return "externaldrive.fill"
+        case .trash: return "trash.fill"
         case .other: return "questionmark.folder.fill"
         }
     }
 
     var color: (r: Double, g: Double, b: Double) {
         switch self {
-        case .apps: return (0.35, 0.55, 1.0)
+        case .applications: return (0.35, 0.55, 1.0)
+        case .developer: return (1.0, 0.6, 0.2)
         case .documents: return (0.55, 0.35, 1.0)
         case .media: return (0.9, 0.3, 0.5)
-        case .developer: return (1.0, 0.6, 0.2)
-        case .system: return (0.6, 0.6, 0.6)
+        case .mail: return (0.25, 0.65, 0.90)
+        case .macOS: return (0.55, 0.55, 0.60)
+        case .systemData: return (0.70, 0.70, 0.72)
+        case .trash: return (0.50, 0.50, 0.55)
         case .other: return (0.4, 0.8, 0.4)
         }
     }
@@ -427,11 +510,19 @@ enum StorageCategory: String, CaseIterable, Identifiable {
 struct StorageCategoryInfo: Identifiable {
     let category: StorageCategory
     let size: Int64
+    /// Top-level sub-paths contributing to this category (for expandable detail)
+    var subPaths: [(name: String, size: Int64)]
 
     var id: String { category.id }
 
     var formattedSize: String {
         ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
+    }
+
+    init(category: StorageCategory, size: Int64, subPaths: [(name: String, size: Int64)] = []) {
+        self.category = category
+        self.size = size
+        self.subPaths = subPaths
     }
 }
 
