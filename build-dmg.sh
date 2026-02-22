@@ -3,7 +3,7 @@ set -e
 
 APP_NAME="Cleankeun"
 BUNDLE_ID="com.cleankeun.pro"
-VERSION="1.1.2"
+VERSION="1.1.4"
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="$PROJECT_DIR/.build/release"
@@ -65,7 +65,7 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << PLIST
     <key>CFBundleShortVersionString</key>
     <string>${VERSION}</string>
     <key>CFBundleVersion</key>
-    <string>3</string>
+    <string>5</string>
     <key>LSMinimumSystemVersion</key>
     <string>26.0</string>
     <key>LSApplicationCategoryType</key>
@@ -199,14 +199,14 @@ cat > "$BG_GENERATOR" << 'SWIFTEOF'
 import AppKit
 import Foundation
 
-// DMG installer background — 660x400 (professional standard)
-// Dark gradient with subtle arrow pointing from app to Applications
+// DMG installer background — 660x400 @2x retina
+// Vibrant blue gradient with visible arrow and branded text
 let w = 660, h = 400
 let rep = NSBitmapImageRep(
     bitmapDataPlanes: nil, pixelsWide: w * 2, pixelsHigh: h * 2,
     bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
     colorSpaceName: .calibratedRGB, bytesPerRow: 0, bitsPerPixel: 0)!
-rep.size = NSSize(width: w, height: h) // @2x retina
+rep.size = NSSize(width: w, height: h)
 
 let ctx = NSGraphicsContext(bitmapImageRep: rep)!
 NSGraphicsContext.current = ctx
@@ -214,56 +214,119 @@ let cg = ctx.cgContext
 let cs = CGColorSpaceCreateDeviceRGB()
 let W = CGFloat(w), H = CGFloat(h)
 
-// Scale for @2x
 cg.scaleBy(x: 2, y: 2)
 
-// Background gradient (dark)
-let bgc = [CGColor(colorSpace: cs, components: [0.06, 0.07, 0.12, 1])!,
-           CGColor(colorSpace: cs, components: [0.03, 0.04, 0.08, 1])!] as CFArray
-let bgg = CGGradient(colorsSpace: cs, colors: bgc, locations: [0, 1])!
+// ── Background: rich blue-to-dark gradient ──
+let bgc = [CGColor(colorSpace: cs, components: [0.04, 0.12, 0.28, 1])!,
+           CGColor(colorSpace: cs, components: [0.02, 0.06, 0.16, 1])!,
+           CGColor(colorSpace: cs, components: [0.01, 0.03, 0.10, 1])!] as CFArray
+let bgg = CGGradient(colorsSpace: cs, colors: bgc, locations: [0, 0.5, 1])!
 cg.drawLinearGradient(bgg, start: CGPoint(x: W/2, y: H), end: CGPoint(x: W/2, y: 0), options: [])
 
-// Subtle blue glow behind center
+// ── Large soft blue glow top-center ──
 cg.saveGState()
-let glowc = [CGColor(colorSpace: cs, components: [0.10, 0.40, 0.90, 0.08])!,
-             CGColor(colorSpace: cs, components: [0.10, 0.40, 0.90, 0.0])!] as CFArray
-let glowg = CGGradient(colorsSpace: cs, colors: glowc, locations: [0, 1])!
-cg.drawRadialGradient(glowg, startCenter: CGPoint(x: W/2, y: H*0.55), startRadius: 0,
-                      endCenter: CGPoint(x: W/2, y: H*0.55), endRadius: W*0.4, options: [])
+let g1c = [CGColor(colorSpace: cs, components: [0.15, 0.45, 0.95, 0.20])!,
+           CGColor(colorSpace: cs, components: [0.10, 0.35, 0.85, 0.0])!] as CFArray
+let g1g = CGGradient(colorsSpace: cs, colors: g1c, locations: [0, 1])!
+cg.drawRadialGradient(g1g, startCenter: CGPoint(x: W*0.5, y: H*0.75),
+    startRadius: 0, endCenter: CGPoint(x: W*0.5, y: H*0.75), endRadius: W*0.55, options: [])
 cg.restoreGState()
 
-// Arrow in center pointing right (app → Applications)
-let arrowY = H * 0.48
-let arrowX = W * 0.5
-let arrowLen: CGFloat = 40
-let arrowHead: CGFloat = 12
+// ── Secondary glow bottom-left ──
+cg.saveGState()
+let g2c = [CGColor(colorSpace: cs, components: [0.05, 0.25, 0.70, 0.12])!,
+           CGColor(colorSpace: cs, components: [0.05, 0.20, 0.60, 0.0])!] as CFArray
+let g2g = CGGradient(colorsSpace: cs, colors: g2c, locations: [0, 1])!
+cg.drawRadialGradient(g2g, startCenter: CGPoint(x: W*0.2, y: H*0.2),
+    startRadius: 0, endCenter: CGPoint(x: W*0.2, y: H*0.2), endRadius: W*0.35, options: [])
+cg.restoreGState()
+
+// ── Decorative subtle grid dots ──
+cg.saveGState()
+cg.setFillColor(CGColor(colorSpace: cs, components: [1, 1, 1, 0.03])!)
+let dotSpacing: CGFloat = 30
+var dy: CGFloat = 10
+while dy < H {
+    var dx: CGFloat = 10
+    while dx < W {
+        cg.fillEllipse(in: CGRect(x: dx - 0.75, y: dy - 0.75, width: 1.5, height: 1.5))
+        dx += dotSpacing
+    }
+    dy += dotSpacing
+}
+cg.restoreGState()
+
+// ── Horizontal divider line where icons sit ──
+cg.saveGState()
+let lineY = H * 0.34
+cg.setStrokeColor(CGColor(colorSpace: cs, components: [1, 1, 1, 0.06])!)
+cg.setLineWidth(0.5)
+cg.move(to: CGPoint(x: W * 0.1, y: lineY))
+cg.addLine(to: CGPoint(x: W * 0.9, y: lineY))
+cg.strokePath()
+cg.restoreGState()
+
+// ── Arrow: prominent, centered between icon positions ──
+let arrowY = H * 0.50
+let arrowX = W * 0.50
+let arrowLen: CGFloat = 56
+let arrowHead: CGFloat = 16
 
 cg.saveGState()
-cg.setStrokeColor(CGColor(colorSpace: cs, components: [1, 1, 1, 0.25])!)
-cg.setLineWidth(2.5)
+// Arrow glow
+cg.setShadow(offset: .zero, blur: 8,
+    color: CGColor(colorSpace: cs, components: [0.3, 0.6, 1.0, 0.4])!)
+cg.setStrokeColor(CGColor(colorSpace: cs, components: [0.5, 0.75, 1.0, 0.7])!)
+cg.setLineWidth(3.0)
 cg.setLineCap(.round)
 cg.setLineJoin(.round)
 
-// Line
+// Shaft
 cg.move(to: CGPoint(x: arrowX - arrowLen/2, y: arrowY))
 cg.addLine(to: CGPoint(x: arrowX + arrowLen/2, y: arrowY))
 cg.strokePath()
 
-// Arrowhead
-cg.move(to: CGPoint(x: arrowX + arrowLen/2 - arrowHead, y: arrowY + arrowHead*0.6))
+// Head
+cg.move(to: CGPoint(x: arrowX + arrowLen/2 - arrowHead, y: arrowY + arrowHead*0.55))
 cg.addLine(to: CGPoint(x: arrowX + arrowLen/2, y: arrowY))
-cg.addLine(to: CGPoint(x: arrowX + arrowLen/2 - arrowHead, y: arrowY - arrowHead*0.6))
+cg.addLine(to: CGPoint(x: arrowX + arrowLen/2 - arrowHead, y: arrowY - arrowHead*0.55))
 cg.strokePath()
 cg.restoreGState()
 
-// "Drag to install" text
-let attrs: [NSAttributedString.Key: Any] = [
-    .font: NSFont.systemFont(ofSize: 11, weight: .medium),
-    .foregroundColor: NSColor(calibratedWhite: 1.0, alpha: 0.3)
+// ── "Drag to Applications" text ──
+let instrAttrs: [NSAttributedString.Key: Any] = [
+    .font: NSFont.systemFont(ofSize: 12, weight: .medium),
+    .foregroundColor: NSColor(calibratedRed: 0.6, green: 0.78, blue: 1.0, alpha: 0.65)
 ]
-let text = NSAttributedString(string: "Drag to Applications to install", attributes: attrs)
-let textSize = text.size()
-text.draw(at: NSPoint(x: (W - textSize.width) / 2, y: H * 0.28))
+let instrText = NSAttributedString(string: "Drag to Applications to install", attributes: instrAttrs)
+let instrSize = instrText.size()
+instrText.draw(at: NSPoint(x: (W - instrSize.width) / 2, y: H * 0.30))
+
+// ── App name at top ──
+let titleAttrs: [NSAttributedString.Key: Any] = [
+    .font: NSFont.systemFont(ofSize: 20, weight: .bold),
+    .foregroundColor: NSColor(calibratedWhite: 1.0, alpha: 0.85)
+]
+let titleText = NSAttributedString(string: "Cleankeun Pro", attributes: titleAttrs)
+let titleSize = titleText.size()
+titleText.draw(at: NSPoint(x: (W - titleSize.width) / 2, y: H * 0.82))
+
+// ── Subtitle ──
+let subAttrs: [NSAttributedString.Key: Any] = [
+    .font: NSFont.systemFont(ofSize: 11, weight: .regular),
+    .foregroundColor: NSColor(calibratedRed: 0.55, green: 0.72, blue: 0.95, alpha: 0.55)
+]
+let subText = NSAttributedString(string: "System Cleaner & Optimizer", attributes: subAttrs)
+let subSize = subText.size()
+subText.draw(at: NSPoint(x: (W - subSize.width) / 2, y: H * 0.76))
+
+// ── Version badge bottom-right ──
+let verAttrs: [NSAttributedString.Key: Any] = [
+    .font: NSFont.monospacedSystemFont(ofSize: 9, weight: .medium),
+    .foregroundColor: NSColor(calibratedWhite: 1.0, alpha: 0.25)
+]
+let verText = NSAttributedString(string: "v1.1.4", attributes: verAttrs)
+verText.draw(at: NSPoint(x: W - 50, y: 10))
 
 ctx.flushGraphics()
 NSGraphicsContext.current = nil

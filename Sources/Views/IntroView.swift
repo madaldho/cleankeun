@@ -29,6 +29,9 @@ struct IntroView: View {
                                 .font(.system(size: 14))
                         }
                         .foregroundStyle(.secondary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .padding(.top, 20)
@@ -89,8 +92,9 @@ struct IntroView: View {
                 Text(buttonTitle)
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(.white)
-                    .frame(width: 200, height: 40)
+                    .frame(width: 220, height: 44)
                     .background(Theme.primaryGradient, in: Capsule())
+                    .contentShape(Capsule())
             }
             .buttonStyle(.plain)
 

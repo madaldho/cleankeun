@@ -130,6 +130,7 @@ struct SidebarButton: View {
     let item: NavigationItem
     let isSelected: Bool
     let action: () -> Void
+    @State private var isHovered = false
 
     var body: some View {
         Button(action: action) {
@@ -141,25 +142,30 @@ struct SidebarButton: View {
 
                 Text(item.rawValue)
                     .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
-                    .foregroundStyle(isSelected ? Color.white : .secondary)
+                    .foregroundStyle(isSelected ? Color.white : .primary)
 
                 Spacer()
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.vertical, 9)
             .background(
                 Group {
                     if isSelected {
                         RoundedRectangle(cornerRadius: 8)
                             .fill(Theme.navSelection)
+                    } else if isHovered {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.primary.opacity(0.06))
                     } else {
                         Color.clear
                     }
                 }
             )
             .cornerRadius(8)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
     }
 }
 
@@ -292,9 +298,10 @@ struct GradientButton: View {
                 Text(title).font(.system(size: 12, weight: .semibold))
             }
             .foregroundStyle(.white)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 9)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 10)
             .background(gradient, in: RoundedRectangle(cornerRadius: 10))
+            .contentShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
         .disabled(isLoading)

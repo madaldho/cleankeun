@@ -265,7 +265,7 @@ struct QuickAction: View {
                     .foregroundStyle(.primary)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
+            .padding(.vertical, 16)
             .background {
                 RoundedRectangle(cornerRadius: 12)
                     .fill(.regularMaterial)
@@ -273,6 +273,7 @@ struct QuickAction: View {
                         color: .black.opacity(isHovered ? 0.08 : 0.04),
                         radius: isHovered ? 8 : 4, y: 2)
             }
+            .contentShape(RoundedRectangle(cornerRadius: 12))
             .scaleEffect(isHovered ? 1.03 : 1.0)
             .animation(.easeInOut(duration: 0.15), value: isHovered)
         }

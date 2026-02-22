@@ -167,6 +167,10 @@ struct FileShredderView: View {
                             Text("Clear All")
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundColor(.secondary)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 6))
+                                .contentShape(RoundedRectangle(cornerRadius: 6))
                         }
                         .buttonStyle(.plain)
                         .padding(.trailing, 8)
@@ -216,10 +220,10 @@ struct FileShredderView: View {
                     .font(.system(size: 12, weight: .medium))
             }
             .foregroundColor(Theme.brand)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(Theme.brand.opacity(0.08))
-            .cornerRadius(6)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(Theme.brand.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+            .contentShape(RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
     }
@@ -272,8 +276,10 @@ struct ShredItemRow: View {
 
             Button(action: onRemove) {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 14))
+                    .font(.system(size: 16))
                     .foregroundColor(.secondary.opacity(isHovered ? 1.0 : 0.5))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Circle())
             }
             .buttonStyle(.plain)
         }

@@ -129,13 +129,14 @@ struct FilterChip: View {
             Text(label)
                 .font(.system(size: 10, weight: isActive ? .semibold : .regular))
                 .foregroundStyle(isActive ? .white : .primary)
-                .padding(.horizontal, 10).padding(.vertical, 4)
+                .padding(.horizontal, 12).padding(.vertical, 6)
                 .background(
                     isActive
                         ? AnyShapeStyle(Theme.primaryGradient)
                         : AnyShapeStyle(Color.gray.opacity(0.12))
                 )
-                .cornerRadius(5)
+                .cornerRadius(6)
+                .contentShape(RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
     }
@@ -152,6 +153,8 @@ struct LargeFileCard: View {
                 Image(systemName: file.isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 16))
                     .foregroundStyle(file.isSelected ? Theme.brand : Color.gray.opacity(0.35))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
@@ -183,14 +186,15 @@ struct LargeFileCard: View {
                 NSWorkspace.shared.selectFile(file.path, inFileViewerRootedAtPath: "")
             } label: {
                 Image(systemName: "folder")
-                    .font(.system(size: 11))
+                    .font(.system(size: 12))
                     .foregroundStyle(.secondary)
-                    .frame(width: 26, height: 26)
+                    .frame(width: 30, height: 30)
                     .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+                    .contentShape(RoundedRectangle(cornerRadius: 6))
             }
             .buttonStyle(.plain)
         }
-        .padding(12)
+        .padding(14)
         .background {
             RoundedRectangle(cornerRadius: 12).fill(.regularMaterial)
                 .shadow(

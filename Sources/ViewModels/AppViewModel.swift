@@ -126,6 +126,13 @@ class AppViewModel: ObservableObject {
         rebuildJunkCategories()
     }
 
+    func toggleJunkItem(_ item: JunkItem) {
+        if let idx = junkItems.firstIndex(where: { $0.id == item.id }) {
+            junkItems[idx].isSelected.toggle()
+            rebuildJunkCategories()
+        }
+    }
+
     private func rebuildJunkCategories() {
         var grouped: [JunkCategory: [JunkItem]] = [:]
         for item in junkItems { grouped[item.category, default: []].append(item) }

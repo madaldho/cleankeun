@@ -49,8 +49,9 @@ struct AppUninstallerView: View {
                             Text("\(vm.leftovers.count) Leftovers")
                                 .font(.system(size: 11, weight: .medium))
                         }
-                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .padding(.horizontal, 12).padding(.vertical, 7)
                         .background(Theme.warning.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+                        .contentShape(RoundedRectangle(cornerRadius: 6))
                     }
                     .buttonStyle(.plain)
                 }
@@ -227,14 +228,15 @@ struct FilterSection<T: Equatable & RawRepresentable & Hashable>: View where T.R
                             .font(.system(size: 10, weight: .medium))
                             .foregroundStyle(.secondary)
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
                     .background(
                         selected == item
                             ? AnyShapeStyle(Theme.brand.opacity(0.1))
                             : AnyShapeStyle(Color.clear)
                     )
                     .cornerRadius(6)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
@@ -259,6 +261,8 @@ struct AppCard: View {
                     Image(systemName: app.isSelected ? "checkmark.square.fill" : "square")
                         .foregroundStyle(app.isSelected ? Theme.brand : Color.gray.opacity(0.5))
                         .font(.system(size: 16))
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
 
@@ -291,7 +295,8 @@ struct AppCard: View {
                 } label: {
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                         .font(.system(size: 10)).foregroundStyle(.secondary)
-                        .frame(width: 24, height: 24)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
 
@@ -299,8 +304,9 @@ struct AppCard: View {
                     Text("Remove")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .padding(.horizontal, 14).padding(.vertical, 6)
                         .background(Theme.dangerGradient, in: RoundedRectangle(cornerRadius: 6))
+                        .contentShape(RoundedRectangle(cornerRadius: 6))
                 }
                 .buttonStyle(.plain)
             }
@@ -374,7 +380,8 @@ struct ComponentRow: View {
                         .foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 40)
-                .padding(.vertical, 6)
+                .padding(.vertical, 8)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
@@ -418,7 +425,7 @@ struct LeftoversSheet: View {
                     .font(.system(size: 16, weight: .bold))
                 Spacer()
                 Button("Done") { dismiss() }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.glass)
             }
 
             Text("These files belong to previously uninstalled apps")

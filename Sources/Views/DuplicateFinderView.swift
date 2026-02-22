@@ -106,8 +106,8 @@ struct DuplicateFinderView: View {
                                     size: 13,
                                     weight: selectedFilter == filter ? .semibold : .regular)
                             )
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 10)
                             .background(
                                 selectedFilter == filter ? Theme.brand.opacity(0.15) : Color.clear
                             )
@@ -116,6 +116,7 @@ struct DuplicateFinderView: View {
                                     ? Theme.brand : .secondary
                             )
                             .cornerRadius(8)
+                            .contentShape(RoundedRectangle(cornerRadius: 8))
                     }
                     .buttonStyle(.plain)
                 }
@@ -364,6 +365,8 @@ struct DuplicateGroupRow: View {
                                         : .gray.opacity(0.4)
                                 )
                                 .font(.system(size: 14))
+                                .frame(width: 28, height: 28)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
 
@@ -392,13 +395,14 @@ struct DuplicateGroupRow: View {
                                 }
                                 Spacer()
                             }
-                            .padding(.vertical, 6)
-                            .padding(.horizontal, 8)
+                            .padding(.vertical, 8)
+                            .padding(.horizontal, 10)
                             .background(
                                 previewFile?.id == file.id
                                     ? Color.primary.opacity(0.06) : Color.clear
                             )
                             .cornerRadius(6)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                     }

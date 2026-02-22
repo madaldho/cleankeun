@@ -55,13 +55,21 @@ struct JunkCleanerView: View {
                                     .foregroundStyle(Theme.brand)
 
                                     Button("All") { vm.toggleAllJunk(selected: true) }
-                                        .buttonStyle(.plain).font(
-                                            .system(size: 11, weight: .medium)
-                                        ).foregroundStyle(Theme.brand)
+                                        .buttonStyle(.plain)
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundStyle(Theme.brand)
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 5)
+                                        .background(Theme.brand.opacity(0.08), in: RoundedRectangle(cornerRadius: 5))
+                                        .contentShape(Rectangle())
                                     Button("None") { vm.toggleAllJunk(selected: false) }
-                                        .buttonStyle(.plain).font(
-                                            .system(size: 11, weight: .medium)
-                                        ).foregroundStyle(Theme.brand)
+                                        .buttonStyle(.plain)
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundStyle(Theme.brand)
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 5)
+                                        .background(Theme.brand.opacity(0.08), in: RoundedRectangle(cornerRadius: 5))
+                                        .contentShape(Rectangle())
                                 }
                             }
                         }
@@ -73,6 +81,9 @@ struct JunkCleanerView: View {
                                     category: cat, items: items,
                                     onToggle: { sel in
                                         vm.toggleJunkCategory(cat, selected: sel)
+                                    },
+                                    onToggleItem: { item in
+                                        vm.toggleJunkItem(item)
                                     })
                             }
                         }
@@ -124,7 +135,9 @@ struct JunkCategoryRow: View {
     let category: JunkCategory
     let items: [JunkItem]
     let onToggle: (Bool) -> Void
+    let onToggleItem: (JunkItem) -> Void
     @State private var isExpanded = false
+    @State private var isHovered = false
 
     private var totalSize: Int64 { items.reduce(0) { $0 + $1.size } }
     private var selectedCount: Int { items.filter(\.isSelected).count }
@@ -134,6 +147,7 @@ struct JunkCategoryRow: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Category header
             Button {
                 withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() }
             } label: {
@@ -141,9 +155,9 @@ struct JunkCategoryRow: View {
                     ZStack {
                         RoundedRectangle(cornerRadius: 8)
                             .fill(Theme.brand.opacity(0.1))
-                            .frame(width: 34, height: 34)
+                            .frame(width: 36, height: 36)
                         Image(systemName: category.icon)
-                            .font(.system(size: 14))
+                            .font(.system(size: 15))
                             .foregroundStyle(Theme.brand)
                     }
 
@@ -162,7 +176,7 @@ struct JunkCategoryRow: View {
                         .font(.system(size: 13, weight: .bold, design: .rounded))
                         .foregroundStyle(Theme.brand)
 
-                    // Mini progress
+                    // Selection indicator
                     ZStack {
                         Circle().stroke(.quaternary, lineWidth: 2)
                         Circle().trim(
@@ -172,54 +186,98 @@ struct JunkCategoryRow: View {
                         .stroke(Theme.brand, style: StrokeStyle(lineWidth: 2, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                     }
-                    .frame(width: 18, height: 18)
+                    .frame(width: 20, height: 20)
 
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 10))
+                        .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
-                .padding(12)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
             if isExpanded {
                 Divider().padding(.horizontal, 14)
+
+                // Select All / None row
+                HStack {
+                    Spacer()
+                    Button("Select All") { onToggle(true) }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Theme.brand)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .contentShape(Rectangle())
+                    Text("|").foregroundStyle(.quaternary).font(.system(size: 11))
+                    Button("Deselect All") { onToggle(false) }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Theme.brand)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .contentShape(Rectangle())
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 6)
+
                 VStack(spacing: 0) {
-                    ForEach(items.prefix(40)) { item in
-                        HStack(spacing: 8) {
-                            Image(
-                                systemName: item.isSelected
-                                    ? "checkmark.circle.fill" : "circle"
+                    ForEach(items.prefix(50)) { item in
+                        Button {
+                            onToggleItem(item)
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(
+                                    systemName: item.isSelected
+                                        ? "checkmark.circle.fill" : "circle"
+                                )
+                                .foregroundStyle(
+                                    item.isSelected ? Theme.brand : Color.gray.opacity(0.4))
+                                .font(.system(size: 14))
+
+                                Image(nsImage: NSWorkspace.shared.icon(forFile: item.path))
+                                    .resizable()
+                                    .frame(width: 16, height: 16)
+
+                                Text(item.fileName)
+                                    .font(.system(size: 11))
+                                    .lineLimit(1).truncationMode(.middle)
+                                    .foregroundStyle(.primary)
+
+                                Spacer()
+
+                                Text(item.formattedSize)
+                                    .font(.system(size: 10, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 6)
+                            .contentShape(Rectangle())
+                            .background(
+                                item.isSelected
+                                    ? Theme.brand.opacity(0.04)
+                                    : Color.clear
                             )
-                            .foregroundStyle(
-                                item.isSelected ? Theme.brand : Color.gray.opacity(0.4))
-                            .font(.system(size: 13))
-                            Image(nsImage: NSWorkspace.shared.icon(forFile: item.path))
-                                .resizable()
-                                .frame(width: 14, height: 14)
-                            Text(item.fileName)
-                                .font(.system(size: 11))
-                                .lineLimit(1).truncationMode(.middle)
-                                .foregroundStyle(.primary)
-                            Spacer()
-                            Text(item.formattedSize)
-                                .font(.system(size: 10, design: .rounded))
-                                .foregroundStyle(.secondary)
                         }
-                        .padding(.horizontal, 16).padding(.vertical, 3)
+                        .buttonStyle(.plain)
                     }
-                    if items.count > 40 {
-                        Text("+ \(items.count - 40) more")
-                            .font(.system(size: 10)).foregroundStyle(.secondary).padding(6)
+                    if items.count > 50 {
+                        Text("+ \(items.count - 50) more files")
+                            .font(.system(size: 10)).foregroundStyle(.secondary)
+                            .padding(8)
                     }
                 }
-                .padding(.vertical, 6)
+                .padding(.vertical, 4)
             }
         }
         .background {
             RoundedRectangle(cornerRadius: 12).fill(.regularMaterial).shadow(
-                color: .black.opacity(0.05), radius: 6, y: 2)
+                color: .black.opacity(isHovered ? 0.08 : 0.05), radius: isHovered ? 8 : 6, y: 2)
         }
+        .animation(.easeInOut(duration: 0.15), value: isHovered)
+        .onHover { isHovered = $0 }
     }
 }
 

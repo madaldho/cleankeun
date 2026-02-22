@@ -237,10 +237,10 @@ struct ToolCard: View {
                             .font(.system(size: 11, weight: .semibold))
                     }
                     .foregroundColor(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 7)
-                    .background(color)
-                    .cornerRadius(7)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 9)
+                    .background(color, in: RoundedRectangle(cornerRadius: 8))
+                    .contentShape(RoundedRectangle(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
                 .disabled(result?.state == .running)

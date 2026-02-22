@@ -5,6 +5,33 @@ All notable changes to Cleankeun will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.4] - 2026-02-22
+
+### Added
+
+- **Flash Clean individual item selection** — Each scanned junk item is now individually selectable/deselectable via click. Added per-category "Select All" / "Deselect All" buttons. Selected items show highlight background. Item limit per category increased from 40 to 50.
+- **Hover states** — Added visual hover feedback to sidebar buttons, junk category rows, and other interactive elements across all views.
+
+### Fixed
+
+- **Button hit areas too small** — Comprehensive UX pass across all 12 views. Added `.contentShape(Rectangle())` to all interactive elements. Increased padding on buttons, checkboxes, filter chips, and action items. Specific improvements:
+  - Sidebar buttons: padding increased to 9pt with hover state
+  - Dashboard quick actions: vertical padding increased to 16pt
+  - App Uninstaller: checkbox/chevron frames set to 28x28, filter buttons padded 10h/6v
+  - Large Files: filter chips padded 12h/6v, checkbox/folder buttons 28-30px frames
+  - Duplicate Finder: tab buttons padded 18h/10v, checkboxes 28x28
+  - Disk Usage: back/home buttons now pill-shaped with branded background
+  - File Shredder: add/clear/remove buttons all enlarged with proper hit areas
+  - Toolkit: run button padded 20h/9v
+  - Intro: start button sized 220x44 with capsule hit area
+- **Non-selected sidebar text too dim** — Changed from `.secondary` to `.primary` for better readability.
+- **Leftover sheet Done button** — Changed from `.plain` to `.glass` button style for consistency.
+
+### Changed
+
+- **DMG installer background redesigned** — Rich blue gradient with branded title, subtitle, decorative dot grid, prominent glowing arrow, and version badge. Much more visually striking than previous minimal dark design.
+- GradientButton padding increased to 20h/10v for better touch targets
+
 ## [1.1.3] - 2026-02-22
 
 ### Fixed

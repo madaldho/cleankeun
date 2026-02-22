@@ -38,13 +38,23 @@ struct DiskUsageView: View {
                                 Text("Back").font(.system(size: 10, weight: .medium))
                             }
                             .foregroundColor(Theme.brand)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Theme.brand.opacity(0.06), in: RoundedRectangle(cornerRadius: 5))
+                            .contentShape(RoundedRectangle(cornerRadius: 5))
                         }
                         .buttonStyle(.plain)
                     }
                     Button {
                         Task { await vm.navigateDiskUsage(to: NSHomeDirectory()) }
                     } label: {
-                        Text("Home").font(.system(size: 10, weight: .medium)).foregroundColor(Theme.brand)
+                        Text("Home")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(Theme.brand)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Theme.brand.opacity(0.06), in: RoundedRectangle(cornerRadius: 5))
+                            .contentShape(RoundedRectangle(cornerRadius: 5))
                     }
                     .buttonStyle(.plain)
                 }
@@ -141,7 +151,8 @@ struct DiskRow: View {
                     .frame(height: 6)
                 }
             }
-            .padding(.horizontal, 12).padding(.vertical, 8)
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .background(
