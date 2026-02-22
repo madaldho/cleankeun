@@ -200,9 +200,12 @@ struct FileShredderView: View {
             panel.canChooseFiles = true
             panel.canChooseDirectories = true
             panel.prompt = "Add to Shredder"
-            if panel.runModal() == .OK {
-                for url in panel.urls {
-                    vm.addShredItem(url: url)
+            // Use async begin() instead of blocking runModal()
+            panel.begin { response in
+                if response == .OK {
+                    for url in panel.urls {
+                        vm.addShredItem(url: url)
+                    }
                 }
             }
         } label: {
@@ -223,11 +226,9 @@ struct FileShredderView: View {
 
     private func handleDrop(providers: [NSItemProvider]) {
         for provider in providers {
-            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) {
-                data, _ in
-                if let data = data as? Data,
-                    let url = URL(dataRepresentation: data, relativeTo: nil)
-                {
+            // Use loadObject instead of deprecated loadItem(forTypeIdentifier:)
+            provider.loadObject(ofClass: NSURL.self) { reading, _ in
+                if let url = reading as? URL {
                     DispatchQueue.main.async {
                         vm.addShredItem(url: url)
                     }

@@ -7,6 +7,7 @@
 import Foundation
 import Darwin
 
+@MainActor
 class SystemMonitorService {
     static let shared = SystemMonitorService()
 

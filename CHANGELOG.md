@@ -5,6 +5,24 @@ All notable changes to Cleankeun will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.3] - 2026-02-22
+
+### Fixed
+
+- **SystemMonitorService data race** — Added `@MainActor` isolation to prevent concurrent access to `prevCPUInfo` and `prevNetworkBytes` mutable state
+- **StartupManagerView inverted toggle** — Warning dialog now correctly appears when disabling a service (was previously triggered when enabling)
+- **DiskUsageView body side-effect** — Removed `SystemMonitorService.shared.getDiskInfo()` call from view body; now uses cached values from ViewModel with `.onAppear` refresh
+- **FileShredderView deprecated APIs** — Replaced blocking `NSOpenPanel.runModal()` with async `panel.begin()`; replaced deprecated `loadItem(forTypeIdentifier:)` with `loadObject(ofClass:)`
+
+### Added
+
+- **Support Developer** — Saweria link (`saweria.co/madaldho`) added to landing page (prominent section with animated coffee icon), README (badge), and app sidebar footer (subtle link)
+
+### Changed
+
+- Landing page nav bar now includes "Support" anchor link
+- Landing page footer now includes Saweria support link
+
 ## [1.1.2] - 2026-02-22
 
 ### Fixed

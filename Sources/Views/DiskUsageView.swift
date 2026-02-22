@@ -51,15 +51,14 @@ struct DiskUsageView: View {
                 .padding(10)
                 .background(RoundedRectangle(cornerRadius: 8).fill(.regularMaterial))
 
-                // Disk overview bar
-                let disk = SystemMonitorService.shared.getDiskInfo()
-                if disk.total > 0 {
+                // Disk overview bar — use cached values from ViewModel (updated by monitor timer)
+                if vm.diskTotal > 0 {
                     GlassCard {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
                                 Text("Disk Overview").font(.system(size: 13, weight: .semibold))
                                 Spacer()
-                                Text("\(ByteCountFormatter.string(fromByteCount: disk.free, countStyle: .file)) available")
+                                Text("\(ByteCountFormatter.string(fromByteCount: vm.diskFree, countStyle: .file)) available")
                                     .font(.system(size: 11, design: .rounded)).foregroundStyle(.secondary)
                             }
                             GeometryReader { geo in
@@ -67,7 +66,7 @@ struct DiskUsageView: View {
                                     RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.06))
                                     RoundedRectangle(cornerRadius: 6)
                                         .fill(Theme.primaryGradient)
-                                        .frame(width: geo.size.width * CGFloat(disk.used) / CGFloat(disk.total))
+                                        .frame(width: geo.size.width * CGFloat(vm.diskUsed) / CGFloat(vm.diskTotal))
                                 }
                             }
                             .frame(height: 22)
@@ -95,6 +94,7 @@ struct DiskUsageView: View {
             }
             .padding(28)
         }
+        .onAppear { vm.refreshSystemInfo() }
     }
 }
 

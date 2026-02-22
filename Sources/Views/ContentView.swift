@@ -100,6 +100,28 @@ struct SidebarView: View {
                 }
             }
             .padding(16)
+
+            // Support developer
+            Divider().padding(.horizontal, 20)
+            Link(destination: URL(string: "https://saweria.co/madaldho")!) {
+                HStack(spacing: 6) {
+                    Image(systemName: "cup.and.saucer.fill")
+                        .font(.system(size: 10))
+                    Text("Support Developer")
+                        .font(.system(size: 10, weight: .medium))
+                }
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering in
+                if hovering {
+                    NSCursor.pointingHand.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
         }
     }
 }

@@ -117,6 +117,16 @@ The brand identity uses a focused 3-color blue palette with semantic colors for 
 - **Platform:** macOS 26+ (Apple Silicon + Intel)
 - **Dependencies:** None — fully self-contained
 
+## Support the Developer
+
+Cleankeun is free, open source, and built with love. If this app helped you, consider buying me a coffee:
+
+<a href="https://saweria.co/madaldho">
+  <img src="https://img.shields.io/badge/Saweria-Support%20Developer-orange?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxwYXRoIGQ9Ik0yMSA4LjI1YzAtMi40ODUtMi4wOTktNC41LTQuNjg4LTQuNS0xLjkzNSAwLTMuNTk3IDEuMTI2LTQuMzEyIDIuNzMzLS43MTUtMS42MDctMi4zNzctMi43MzMtNC4zMTMtMi43MzNDNS4xIDMuNzUgMyA1Ljc2NSAzIDguMjVjMCA3LjIyIDkgMTIgOSAxMnM5LTQuNzggOS0xMloiLz48L3N2Zz4=" alt="Support via Saweria">
+</a>
+
+Every bit helps keep the project alive. Thank you!
+
 ## Author
 
 **Muhamad Ali Ridho** ([@madaldho](https://github.com/madaldho))

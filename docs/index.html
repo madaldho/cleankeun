@@ -590,6 +590,103 @@
         }
         .req-value.green { color: var(--success); }
 
+        /* ===== SUPPORT ===== */
+        .support {
+            padding: 100px 0 40px;
+            text-align: center;
+        }
+        .support-box {
+            background: linear-gradient(135deg, rgba(237,137,54,0.10), rgba(245,101,101,0.06), rgba(159,122,234,0.06));
+            border: 1px solid rgba(237,137,54,0.18);
+            border-radius: 28px;
+            padding: 72px 40px;
+            position: relative;
+            overflow: hidden;
+        }
+        .support-box::before {
+            content: '';
+            position: absolute;
+            top: -2px; left: 15%; right: 15%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--warning), var(--danger), transparent);
+            border-radius: 2px;
+        }
+        .support-emoji {
+            font-size: 56px;
+            margin-bottom: 24px;
+            display: block;
+            animation: supportBounce 3s ease-in-out infinite;
+        }
+        @keyframes supportBounce {
+            0%, 100% { transform: translateY(0) scale(1); }
+            50% { transform: translateY(-8px) scale(1.05); }
+        }
+        .support-box h2 {
+            font-size: clamp(28px, 4vw, 42px);
+            font-weight: 900;
+            letter-spacing: -1px;
+            margin-bottom: 16px;
+            line-height: 1.2;
+        }
+        .support-box h2 .accent {
+            background: linear-gradient(135deg, var(--warning), #f6ad55, var(--danger));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .support-box p {
+            font-size: 16px;
+            color: var(--text-2);
+            max-width: 520px;
+            margin: 0 auto 40px;
+            line-height: 1.7;
+        }
+        .btn-support {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            background: linear-gradient(135deg, #ed8936, #f6ad55);
+            color: white;
+            font-size: 18px;
+            font-weight: 800;
+            padding: 20px 48px;
+            border-radius: 16px;
+            text-decoration: none;
+            border: none;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            box-shadow:
+                0 0 0 1px rgba(237,137,54,0.3),
+                0 4px 28px rgba(237,137,54,0.3),
+                0 1px 3px rgba(0,0,0,0.3);
+            position: relative;
+            overflow: hidden;
+            letter-spacing: -0.3px;
+        }
+        .btn-support::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, transparent, rgba(255,255,255,0.15), transparent);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .btn-support:hover {
+            transform: translateY(-3px) scale(1.02);
+            box-shadow:
+                0 0 0 1px rgba(237,137,54,0.4),
+                0 12px 48px rgba(237,137,54,0.4),
+                0 2px 6px rgba(0,0,0,0.3);
+        }
+        .btn-support:hover::before { opacity: 1; }
+        .btn-support:active { transform: translateY(0) scale(1); }
+        .btn-support svg { width: 22px; height: 22px; }
+        .support-note {
+            font-size: 13px;
+            color: var(--text-3);
+            margin-top: 20px;
+        }
+
         /* ===== CTA ===== */
         .cta {
             padding: 80px 0;
@@ -744,6 +841,7 @@
                 <div class="nav-links">
                     <a href="#features">Features</a>
                     <a href="#tech">Tech</a>
+                    <a href="#support">Support</a>
                     <a href="https://github.com/madaldho/cleankeun" class="nav-gh">
                         <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
                         GitHub
@@ -757,7 +855,7 @@
             <section class="hero">
                 <div class="hero-version">
                     <span class="dot"></span>
-                    v1.1.2 — Open Source & Free Forever
+                    v1.1.3 — Open Source & Free Forever
                 </div>
                 <h1>
                     Clean Your Mac.<br>
@@ -977,6 +1075,26 @@
                 </div>
             </section>
 
+            <!-- Support Developer -->
+            <section class="support reveal" id="support">
+                <div class="support-box">
+                    <span class="support-emoji">&#9749;</span>
+                    <h2>Buy Me a <span class="accent">Coffee</span></h2>
+                    <p>
+                        Cleankeun is free and open source. If this app saved your time or helped
+                        clean up your Mac, consider supporting the developer. Every coffee keeps
+                        the project alive and growing!
+                    </p>
+                    <a href="https://saweria.co/madaldho" target="_blank" rel="noopener" class="btn-support">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" /></svg>
+                        Support via Saweria
+                    </a>
+                    <p class="support-note">
+                        100% voluntary &mdash; the app stays free forever regardless
+                    </p>
+                </div>
+            </section>
+
             <!-- CTA -->
             <section class="cta reveal">
                 <div class="cta-box">
@@ -999,6 +1117,7 @@
                         <a href="https://github.com/madaldho/cleankeun">Source Code</a>
                         <a href="https://github.com/madaldho/cleankeun/releases">Releases</a>
                         <a href="https://github.com/madaldho/cleankeun/blob/main/LICENSE">MIT License</a>
+                        <a href="https://saweria.co/madaldho" style="color: var(--warning);">&#9749; Support</a>
                     </div>
                 </div>
             </footer>

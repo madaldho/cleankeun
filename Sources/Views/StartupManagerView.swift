@@ -214,7 +214,9 @@ struct StartupManagerView: View {
                         isOn: Binding(
                             get: { item.isEnabled },
                             set: { _ in
-                                if !item.isEnabled && selectedCategory == .services {
+                                // Show warning when disabling a service (isEnabled is still
+                                // the old value at this point — true means toggling OFF)
+                                if item.isEnabled && selectedCategory == .services {
                                     itemToToggle = idx
                                     showWarning = true
                                 } else {
