@@ -5,6 +5,25 @@ All notable changes to Cleankeun will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-02-22
+
+### Fixed
+
+- **Window activation** — App now properly activates on launch and when clicking the Dock icon (added `NSApplicationDelegateAdaptor` with `CleankeunAppDelegate`)
+- **Monitoring timer race** — Changed to reference-counted timer so multiple views can independently start/stop monitoring without conflicts
+- **Menu bar "Open Cleankeun"** — Uses `canBecomeMain` for reliable window lookup instead of fragile title matching
+- **Menu bar lifecycle** — Properly stops monitoring on disappear to balance the start call
+- **App Uninstaller crash** — Replaced index-based `ForEach` with identity-based iteration to prevent out-of-bounds crashes during filtering
+- **Alert force unwrap** — Replaced `appToUninstall!.name` with safe optional map
+- **Status message clearing** — Clean/delete operations now preserve result messages across subsequent scans
+- **Pipe deadlock** — `ToolkitService.runProcess()` reads stderr before `waitUntilExit()` to prevent hanging
+- **Cached system info** — `ToolkitService` uses lazy vars for macOS version and machine model to avoid repeated syscalls
+
+### Changed
+
+- **Landing page redesigned** — Premium dark-themed GitHub Pages site with animated ambient orbs, scroll-reveal animations, trust bar, feature cards, and responsive layout
+- Build script version bumped to 1.1.0 with icon preservation across rebuilds
+
 ## [1.0.0] - 2026-02-22
 
 ### Added
