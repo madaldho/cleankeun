@@ -1,0 +1,42 @@
+# Xcode / Swift
+.build/
+.swiftpm/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+DerivedData/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+Packages/
+Package.resolved
+.build/
+
+# Distribution (rebuild with build-dmg.sh)
+dist/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# VS Code
+.vscode/
+
+# IDE
+*.swp
+*.swo
+*~
+.idea/
+
+# Environment
+.env
+.env.local
