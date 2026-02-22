@@ -10,6 +10,9 @@ struct ToolkitView: View {
     @EnvironmentObject var vm: AppViewModel
     @State private var toolResults: [String: ToolResult] = [:]
     @State private var activeIntroTool: String? = nil
+    @State private var showTrashConfirm = false
+    @State private var trashItemCount = 0
+    @State private var trashSize: Int64 = 0
 
     var body: some View {
         if let tool = activeIntroTool, tool == "spotlight" {
@@ -75,14 +78,14 @@ struct ToolkitView: View {
                     ], spacing: 16
                 ) {
                     ToolCard(
-                        icon: "network",
-                        title: "Flush DNS Cache",
+                        icon: "safari.fill",
+                        title: "Clear Browser Data",
                         description:
-                            "Clear the DNS resolver cache to fix network issues and apply DNS changes immediately.",
+                            "Clear cached data from Safari, Chrome, Firefox, and Arc to free disk space and fix web issues.",
                         color: Theme.brand,
-                        result: toolResults["dns"]
+                        result: toolResults["browser"]
                     ) {
-                        await runTool("dns") { await ToolkitService.shared.flushDNS() }
+                        await runTool("browser") { await ToolkitService.shared.clearBrowserData() }
                     }
 
                     ToolCard(
@@ -112,12 +115,18 @@ struct ToolkitView: View {
                     ToolCard(
                         icon: "trash.circle.fill",
                         title: "Empty Trash",
-                        description:
-                            "Permanently remove all items from the Trash folder to free up disk space.",
+                        description: trashDescription,
                         color: Theme.danger,
                         result: toolResults["trash"]
                     ) {
-                        await runTool("trash") { await ToolkitService.shared.emptyTrash() }
+                        let info = ToolkitService.shared.getTrashInfo()
+                        trashItemCount = info.itemCount
+                        trashSize = info.totalSize
+                        if info.itemCount == 0 {
+                            toolResults["trash"] = ToolResult(state: .success, message: "Trash is already empty")
+                        } else {
+                            showTrashConfirm = true
+                        }
                     }
 
                     ToolCard(
@@ -157,6 +166,33 @@ struct ToolkitView: View {
             }
             .padding(28)
         }
+        .onAppear { refreshTrashInfo() }
+        .alert("Empty Trash?", isPresented: $showTrashConfirm) {
+            Button("Cancel", role: .cancel) { }
+            Button("Empty Trash", role: .destructive) {
+                Task {
+                    await runTool("trash") { await ToolkitService.shared.emptyTrash() }
+                    refreshTrashInfo()
+                }
+            }
+        } message: {
+            Text("Permanently delete \(trashItemCount) items (\(ByteCountFormatter.string(fromByteCount: trashSize, countStyle: .file)))? This cannot be undone.")
+        }
+    }
+
+    private var trashDescription: String {
+        let info = ToolkitService.shared.getTrashInfo()
+        if info.itemCount == 0 {
+            return "Trash is empty — nothing to clean."
+        }
+        let size = ByteCountFormatter.string(fromByteCount: info.totalSize, countStyle: .file)
+        return "\(info.itemCount) items in Trash (\(size)). Permanently remove them to free up disk space."
+    }
+
+    private func refreshTrashInfo() {
+        let info = ToolkitService.shared.getTrashInfo()
+        trashItemCount = info.itemCount
+        trashSize = info.totalSize
     }
 
     private func runTool(
