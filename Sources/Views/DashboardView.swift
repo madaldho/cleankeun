@@ -1,5 +1,5 @@
 //
-//  Cleankeun Pro — macOS System Cleaner & Optimizer
+//  Cleankeun — macOS System Cleaner & Optimizer
 //  Copyright (c) 2025-2026 Muhamad Ali Ridho. All rights reserved.
 //  Licensed under the MIT License. See LICENSE file for details.
 //
@@ -19,6 +19,37 @@ struct DashboardView: View {
                 // Top gauges row
                 GlassEffectContainer {
                     HStack(spacing: 16) {
+                        // Health Score Gauge (Feature 2)
+                        GlassCard {
+                            VStack(spacing: 12) {
+                                let scoreColor = vm.healthScoreColor
+                                let gradient = LinearGradient(
+                                    colors: [
+                                        Color(red: scoreColor.r, green: scoreColor.g, blue: scoreColor.b),
+                                        Color(red: scoreColor.r, green: scoreColor.g, blue: scoreColor.b).opacity(0.6),
+                                    ],
+                                    startPoint: .topLeading, endPoint: .bottomTrailing)
+                                AnimatedCircularGauge(
+                                    value: Double(vm.systemHealthScore) / 100,
+                                    lineWidth: 10, gradient: gradient, size: 80
+                                )
+                                .overlay {
+                                    VStack(spacing: 1) {
+                                        Text("\(vm.systemHealthScore)")
+                                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                                        Text("Health")
+                                            .font(.system(size: 9, weight: .medium))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                Text(vm.systemHealthScore >= 80 ? "Good" : vm.systemHealthScore >= 50 ? "Fair" : "Poor")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(
+                                        Color(red: scoreColor.r, green: scoreColor.g, blue: scoreColor.b))
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+
                         // CPU Gauge
                         GlassCard {
                             VStack(spacing: 12) {
@@ -35,9 +66,19 @@ struct DashboardView: View {
                                             .foregroundStyle(.secondary)
                                     }
                                 }
-                                Text("\(vm.cpuInfo?.coreCount ?? 0) Cores")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(.secondary)
+                                HStack(spacing: 4) {
+                                    Text("\(vm.cpuInfo?.coreCount ?? 0) Cores")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.secondary)
+                                    if let temp = vm.cpuInfo?.temperature {
+                                        Text("•")
+                                            .font(.system(size: 10))
+                                            .foregroundStyle(.quaternary)
+                                        Text(String(format: "%.0f°C", temp))
+                                            .font(.system(size: 10, weight: .medium))
+                                            .foregroundStyle(temp > 80 ? Theme.danger : Theme.success)
+                                    }
+                                }
                             }
                             .frame(maxWidth: .infinity)
                         }
@@ -137,7 +178,34 @@ struct DashboardView: View {
                     }
                 }
 
-                // Storage Bar
+                // Recommendations (Feature 2)
+                if !vm.healthRecommendations.isEmpty && vm.systemHealthScore < 80 {
+                    GlassCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "lightbulb.fill")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Theme.warning)
+                                Text("Recommendations")
+                                    .font(.system(size: 13, weight: .semibold))
+                            }
+                            ForEach(vm.healthRecommendations.indices, id: \.self) { idx in
+                                let rec = vm.healthRecommendations[idx]
+                                HStack(spacing: 8) {
+                                    Image(systemName: rec.icon)
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 16)
+                                    Text(rec.text)
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Storage Bar (Feature 7 — multi-segment)
                 GlassCard {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
@@ -152,33 +220,91 @@ struct DashboardView: View {
                         }
 
                         if vm.diskTotal > 0 {
-                            GeometryReader { geo in
-                                let pct = CGFloat(vm.diskUsed) / CGFloat(vm.diskTotal)
-                                ZStack(alignment: .leading) {
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .fill(.quaternary)
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .fill(
-                                            pct > 0.85
-                                                ? Theme.dangerGradient : Theme.primaryGradient
-                                        )
-                                        .frame(width: geo.size.width * pct)
-                                        .animation(.easeInOut(duration: 0.8), value: pct)
+                            // Multi-segment storage bar
+                            if !vm.storageCategories.isEmpty {
+                                GeometryReader { geo in
+                                    HStack(spacing: 1) {
+                                        ForEach(vm.storageCategories) { cat in
+                                            let pct = CGFloat(cat.size) / CGFloat(vm.diskTotal)
+                                            if pct > 0.005 {  // Only show segments > 0.5%
+                                                let catColor = Color(
+                                                    red: cat.category.color.r,
+                                                    green: cat.category.color.g,
+                                                    blue: cat.category.color.b)
+                                                RoundedRectangle(cornerRadius: 4)
+                                                    .fill(catColor)
+                                                    .frame(width: max(4, geo.size.width * pct))
+                                            }
+                                        }
+                                        // Free space
+                                        let freePct = CGFloat(vm.diskFree) / CGFloat(vm.diskTotal)
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(Color.primary.opacity(0.08))
+                                            .frame(width: max(4, geo.size.width * freePct))
+                                    }
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
                                 }
+                                .frame(height: 28)
+                            } else {
+                                // Fallback simple bar
+                                GeometryReader { geo in
+                                    let pct = CGFloat(vm.diskUsed) / CGFloat(vm.diskTotal)
+                                    ZStack(alignment: .leading) {
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .fill(.quaternary)
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .fill(
+                                                pct > 0.85
+                                                    ? Theme.dangerGradient : Theme.primaryGradient
+                                            )
+                                            .frame(width: geo.size.width * pct)
+                                            .animation(.easeInOut(duration: 0.8), value: pct)
+                                    }
+                                }
+                                .frame(height: 28)
                             }
-                            .frame(height: 28)
 
-                            HStack {
-                                HStack(spacing: 4) {
-                                    Circle().fill(Theme.brand).frame(width: 8, height: 8)
-                                    Text("Used").font(.system(size: 10)).foregroundStyle(.secondary)
+                            // Category legend
+                            if !vm.storageCategories.isEmpty {
+                                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 6) {
+                                    ForEach(vm.storageCategories) { cat in
+                                        HStack(spacing: 4) {
+                                            Circle()
+                                                .fill(Color(
+                                                    red: cat.category.color.r,
+                                                    green: cat.category.color.g,
+                                                    blue: cat.category.color.b))
+                                                .frame(width: 8, height: 8)
+                                            Text(cat.category.rawValue)
+                                                .font(.system(size: 9))
+                                                .foregroundStyle(.secondary)
+                                            Text(cat.formattedSize)
+                                                .font(.system(size: 9, weight: .medium, design: .rounded))
+                                                .foregroundStyle(.primary)
+                                        }
+                                    }
+                                    HStack(spacing: 4) {
+                                        Circle().fill(Color.primary.opacity(0.15)).frame(width: 8, height: 8)
+                                        Text("Free")
+                                            .font(.system(size: 9))
+                                            .foregroundStyle(.secondary)
+                                        Text(ByteCountFormatter.string(fromByteCount: vm.diskFree, countStyle: .file))
+                                            .font(.system(size: 9, weight: .medium, design: .rounded))
+                                            .foregroundStyle(.primary)
+                                    }
                                 }
-                                HStack(spacing: 4) {
-                                    Circle().fill(.quaternary).frame(width: 8, height: 8)
-                                    Text("Available").font(.system(size: 10)).foregroundStyle(
-                                        .secondary)
+                            } else {
+                                HStack {
+                                    HStack(spacing: 4) {
+                                        Circle().fill(Theme.brand).frame(width: 8, height: 8)
+                                        Text("Used").font(.system(size: 10)).foregroundStyle(.secondary)
+                                    }
+                                    HStack(spacing: 4) {
+                                        Circle().fill(.quaternary).frame(width: 8, height: 8)
+                                        Text("Available").font(.system(size: 10)).foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
                                 }
-                                Spacer()
                             }
                         }
                     }
@@ -270,6 +396,7 @@ struct QuickAction: View {
             .background {
                 RoundedRectangle(cornerRadius: 12)
                     .fill(.regularMaterial)
+                    .glassEffect(.regular, in: .rect(cornerRadius: 12))
                     .shadow(
                         color: .primary.opacity(isHovered ? 0.08 : 0.04),
                         radius: isHovered ? 8 : 4, y: 2)

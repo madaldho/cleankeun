@@ -1,5 +1,5 @@
 //
-//  Cleankeun Pro — macOS System Cleaner & Optimizer
+//  Cleankeun — macOS System Cleaner & Optimizer
 //  Copyright (c) 2025-2026 Muhamad Ali Ridho. All rights reserved.
 //  Licensed under the MIT License. See LICENSE file for details.
 //
@@ -23,13 +23,6 @@ struct MenuBarView: View {
                         .font(.system(size: 14, weight: .heavy, design: .rounded))
                         .foregroundStyle(.primary)
                     Spacer()
-                    Text("Pro")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(Theme.primaryGradient)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
@@ -41,12 +34,14 @@ struct MenuBarView: View {
                             icon: "cpu", label: "CPU",
                             value: "\(Int(vm.cpuInfo?.usagePercentage ?? 0))%",
                             percentage: (vm.cpuInfo?.usagePercentage ?? 0) / 100,
-                            color: Theme.brand)
+                            color: Theme.brand,
+                            subtitle: vm.cpuInfo?.temperature.map { String(format: "%.0f°C", $0) })
                         MenuBarStatCard(
                             icon: "memorychip.fill", label: "RAM",
                             value: "\(Int(vm.memoryInfo?.usagePercentage ?? 0))%",
                             percentage: (vm.memoryInfo?.usagePercentage ?? 0) / 100,
-                            color: memoryColor)
+                            color: memoryColor,
+                            subtitle: nil)
                     }
 
                     HStack(spacing: 12) {
@@ -56,7 +51,8 @@ struct MenuBarView: View {
                             icon: "internaldrive.fill", label: "Disk",
                             value: ByteCountFormatter.string(
                                 fromByteCount: vm.diskFree, countStyle: .file),
-                            percentage: diskPct, color: diskPct > 0.85 ? Theme.danger : Theme.brand)
+                            percentage: diskPct, color: diskPct > 0.85 ? Theme.danger : Theme.brand,
+                            subtitle: nil)
 
                         // Compact Network Card
                         VStack(alignment: .leading, spacing: 10) {
@@ -96,31 +92,22 @@ struct MenuBarView: View {
                         .background(
                             RoundedRectangle(cornerRadius: 14)
                                 .fill(.fill.quaternary)
+                                .glassEffect(.regular, in: .rect(cornerRadius: 14))
                         )
                     }
                 }
                 .padding(.horizontal, 16)
 
-                // Quick Actions (2x2 Grid)
-                VStack(spacing: 10) {
-                    HStack(spacing: 10) {
-                        MenuBarAction(icon: "bolt.fill", title: "Clean", color: Theme.brand)
-                        {
-                            openMainApp(.junkCleaner)
-                        }
-                        MenuBarAction(
-                            icon: "m.square.fill", title: "Memory", color: Theme.brand
-                        ) {
-                            Task { await vm.optimizeMemory() }
-                        }
+                // Quick Actions
+                HStack(spacing: 10) {
+                    MenuBarAction(icon: "bolt.fill", title: "Clean", color: Theme.brand)
+                    {
+                        openMainApp(.junkCleaner)
                     }
-                    HStack(spacing: 10) {
-                        MenuBarAction(icon: "trash.fill", title: "Empty", color: Theme.danger) {
-                            Task { let _ = await ToolkitService.shared.emptyTrash() }
-                        }
-                        MenuBarAction(icon: "wifi", title: "DNS", color: Theme.brand) {
-                            Task { let _ = await ToolkitService.shared.flushDNS() }
-                        }
+                    MenuBarAction(
+                        icon: "m.square.fill", title: "Memory", color: Theme.brand
+                    ) {
+                        Task { await vm.optimizeMemory() }
                     }
                 }
                 .padding(.horizontal, 16)
@@ -201,6 +188,7 @@ struct MenuBarStatCard: View {
     let value: String
     let percentage: Double
     let color: Color
+    var subtitle: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -212,9 +200,16 @@ struct MenuBarStatCard: View {
                         .foregroundStyle(color)
                 }
                 Spacer()
-                Text(value)
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundStyle(.primary)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(value)
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(.primary)
+                    if let sub = subtitle {
+                        Text(sub)
+                            .font(.system(size: 9, weight: .medium, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -238,6 +233,7 @@ struct MenuBarStatCard: View {
         .background(
             RoundedRectangle(cornerRadius: 14)
                 .fill(.fill.quaternary)
+                .glassEffect(.regular, in: .rect(cornerRadius: 14))
         )
     }
 }

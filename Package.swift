@@ -1,6 +1,6 @@
 // swift-tools-version: 6.2
 //
-//  Cleankeun Pro — macOS System Cleaner & Optimizer
+//  Cleankeun — macOS System Cleaner & Optimizer
 //  Copyright (c) 2025-2026 Muhamad Ali Ridho. All rights reserved.
 //  Licensed under the MIT License. See LICENSE file for details.
 //

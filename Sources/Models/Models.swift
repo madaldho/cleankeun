@@ -1,5 +1,5 @@
 //
-//  Cleankeun Pro — macOS System Cleaner & Optimizer
+//  Cleankeun — macOS System Cleaner & Optimizer
 //  Copyright (c) 2025-2026 Muhamad Ali Ridho. All rights reserved.
 //  Licensed under the MIT License. See LICENSE file for details.
 //
@@ -24,7 +24,7 @@ struct JunkItem: Identifiable, Hashable {
     }
 
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
-    static func == (lhs: JunkItem, rhs: JunkItem) -> Bool { lhs.id == rhs.id }
+    static func == (lhs: JunkItem, rhs: JunkItem) -> Bool { lhs.id == rhs.id && lhs.isSelected == rhs.isSelected }
 }
 
 enum JunkCategory: String, CaseIterable, Identifiable {
@@ -35,6 +35,9 @@ enum JunkCategory: String, CaseIterable, Identifiable {
     case browserCache = "Browser Cache"
     case xcode = "Xcode Cache"
     case mailCache = "Mail Cache"
+    case crashReports = "Crash Reports"
+    case unusedDMGs = "Unused DMGs"
+    case iOSBackups = "iOS Backups"
     case trash = "Trash"
 
     var id: String { rawValue }
@@ -48,6 +51,9 @@ enum JunkCategory: String, CaseIterable, Identifiable {
         case .browserCache: return "globe"
         case .xcode: return "hammer"
         case .mailCache: return "envelope"
+        case .crashReports: return "exclamationmark.triangle"
+        case .unusedDMGs: return "opticaldiscdrive"
+        case .iOSBackups: return "iphone"
         case .trash: return "trash"
         }
     }
@@ -61,6 +67,9 @@ enum JunkCategory: String, CaseIterable, Identifiable {
         case .browserCache: return (0.2, 0.78, 0.9)
         case .xcode: return (1.0, 0.4, 0.4)
         case .mailCache: return (1.0, 0.75, 0.3)
+        case .crashReports: return (0.9, 0.3, 0.3)
+        case .unusedDMGs: return (0.6, 0.4, 1.0)
+        case .iOSBackups: return (0.3, 0.7, 0.95)
         case .trash: return (0.6, 0.6, 0.6)
         }
     }
@@ -329,14 +338,95 @@ struct StartupItem: Identifiable, Hashable {
     var isEnabled: Bool
     let bundleIdentifier: String?
 
+    var isApple: Bool {
+        if let bid = bundleIdentifier {
+            return bid.hasPrefix("com.apple")
+        }
+        return path.contains("/System/") || path.contains("/usr/libexec/")
+    }
+
+    var vendorLabel: String {
+        isApple ? "Apple" : "Third Party"
+    }
+
+    var impact: StartupImpact {
+        // Heuristic: daemons are higher impact than agents, login items are medium
+        switch type {
+        case .launchDaemon: return .high
+        case .launchAgent: return isApple ? .low : .medium
+        case .loginItem: return .medium
+        }
+    }
+
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
     static func == (lhs: StartupItem, rhs: StartupItem) -> Bool { lhs.id == rhs.id }
 }
 
-enum StartupType: String {
+enum StartupType: String, CaseIterable, Identifiable {
     case launchAgent = "Launch Agent"
     case launchDaemon = "Launch Daemon"
     case loginItem = "Login Item"
+
+    var id: String { rawValue }
+}
+
+enum StartupImpact: String {
+    case high = "High"
+    case medium = "Medium"
+    case low = "Low"
+
+    var color: (r: Double, g: Double, b: Double) {
+        switch self {
+        case .high: return (0.9, 0.3, 0.3)
+        case .medium: return (1.0, 0.6, 0.2)
+        case .low: return (0.3, 0.8, 0.4)
+        }
+    }
+}
+
+// MARK: - Storage Category (Feature 7)
+enum StorageCategory: String, CaseIterable, Identifiable {
+    case apps = "Apps"
+    case documents = "Documents"
+    case media = "Media"
+    case developer = "Developer"
+    case system = "System"
+    case other = "Other"
+
+    var id: String { rawValue }
+
+    var icon: String {
+        switch self {
+        case .apps: return "app.fill"
+        case .documents: return "doc.fill"
+        case .media: return "photo.on.rectangle.fill"
+        case .developer: return "hammer.fill"
+        case .system: return "gearshape.fill"
+        case .other: return "questionmark.folder.fill"
+        }
+    }
+
+    var color: (r: Double, g: Double, b: Double) {
+        switch self {
+        case .apps: return (0.35, 0.55, 1.0)
+        case .documents: return (0.55, 0.35, 1.0)
+        case .media: return (0.9, 0.3, 0.5)
+        case .developer: return (1.0, 0.6, 0.2)
+        case .system: return (0.6, 0.6, 0.6)
+        case .other: return (0.4, 0.8, 0.4)
+        }
+    }
+}
+
+struct StorageCategoryInfo: Identifiable {
+    let category: StorageCategory
+    let size: Int64
+
+    var id: String { category.id }
+
+    var formattedSize: String {
+        ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
+    }
 }
 
 // MARK: - Disk Usage
@@ -367,6 +457,15 @@ struct ShredItem: Identifiable {
 }
 
 // MARK: - Navigation
+enum NavigationSection: String, CaseIterable, Identifiable {
+    case overview = "Overview"
+    case cleaning = "Cleaning"
+    case system = "System"
+    case tools = "Tools"
+
+    var id: String { rawValue }
+}
+
 enum NavigationItem: String, CaseIterable, Identifiable {
     case dashboard = "Dashboard"
     case junkCleaner = "Flash Clean"
@@ -380,6 +479,19 @@ enum NavigationItem: String, CaseIterable, Identifiable {
     case toolkit = "Toolkit"
 
     var id: String { rawValue }
+
+    var section: NavigationSection {
+        switch self {
+        case .dashboard: return .overview
+        case .junkCleaner, .uninstaller, .largeFiles, .duplicates: return .cleaning
+        case .memory, .startup, .diskUsage: return .system
+        case .shredder, .toolkit: return .tools
+        }
+    }
+
+    static func items(for section: NavigationSection) -> [NavigationItem] {
+        allCases.filter { $0.section == section }
+    }
 
     var icon: String {
         switch self {
@@ -424,4 +536,29 @@ enum NavigationItem: String, CaseIterable, Identifiable {
 
 struct GradientStop {
     let r: Double, g: Double, b: Double
+}
+
+// MARK: - Sort Options
+enum LargeFileSortOption: String, CaseIterable, Identifiable {
+    case size = "Size"
+    case name = "Name"
+    case date = "Date Modified"
+
+    var id: String { rawValue }
+
+    var icon: String {
+        switch self {
+        case .size: return "arrow.up.arrow.down.square"
+        case .name: return "textformat.abc"
+        case .date: return "calendar"
+        }
+    }
+}
+
+enum AppSortOption: String, CaseIterable, Identifiable {
+    case name = "Name"
+    case size = "Size"
+    case date = "Date"
+
+    var id: String { rawValue }
 }

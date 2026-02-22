@@ -1,4 +1,4 @@
-# Cleankeun Pro
+# Cleankeun
 
 A native macOS system cleaner and optimizer built with Swift and SwiftUI, featuring Apple's Liquid Glass design language.
 

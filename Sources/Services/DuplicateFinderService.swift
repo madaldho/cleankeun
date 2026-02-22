@@ -1,5 +1,5 @@
 //
-//  Cleankeun Pro — macOS System Cleaner & Optimizer
+//  Cleankeun — macOS System Cleaner & Optimizer
 //  Copyright (c) 2025-2026 Muhamad Ali Ridho. All rights reserved.
 //  Licensed under the MIT License. See LICENSE file for details.
 //
@@ -11,19 +11,22 @@ class DuplicateFinderService {
     static let shared = DuplicateFinderService()
     private let fileManager = FileManager.default
 
-    func scanForDuplicates() async -> [DuplicateGroup] {
+    func scanForDuplicates(paths: [String]? = nil, includeHidden: Bool = false) async -> [DuplicateGroup] {
         let home = NSHomeDirectory()
-        let searchPaths = [
+        let searchPaths = paths ?? [
             "\(home)/Downloads", "\(home)/Desktop",
             "\(home)/Documents", "\(home)/Pictures",
+            "\(home)/Movies", "\(home)/Music",
         ]
+
+        let options: FileManager.DirectoryEnumerationOptions = includeHidden ? [] : [.skipsHiddenFiles]
 
         var sizeMap: [Int64: [String]] = [:]
         for searchPath in searchPaths {
             guard let enumerator = fileManager.enumerator(
                 at: URL(fileURLWithPath: searchPath),
                 includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey],
-                options: [.skipsHiddenFiles]
+                options: options
             ) else { continue }
 
             while let url = enumerator.nextObject() as? URL {
@@ -94,7 +97,7 @@ class DuplicateFinderService {
         var deleted = 0; var freedSpace: Int64 = 0; var errors: [String] = []
         for file in files where file.isSelected {
             do {
-                try fileManager.trashItem(at: URL(fileURLWithPath: file.path), resultingItemURL: nil)
+                try fileManager.removeItem(atPath: file.path)
                 deleted += 1; freedSpace += file.size
             } catch { errors.append("\(file.fileName): \(error.localizedDescription)") }
         }

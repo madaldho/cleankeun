@@ -2,7 +2,7 @@
 set -e
 
 APP_NAME="Cleankeun"
-BUNDLE_ID="com.cleankeun.pro"
+BUNDLE_ID="com.cleankeun.app"
 VERSION="1.2.0"
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -59,7 +59,7 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << PLIST
     <key>CFBundleName</key>
     <string>${APP_NAME}</string>
     <key>CFBundleDisplayName</key>
-    <string>Cleankeun Pro</string>
+    <string>Cleankeun</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -307,7 +307,7 @@ let titleAttrs: [NSAttributedString.Key: Any] = [
     .font: NSFont.systemFont(ofSize: 20, weight: .bold),
     .foregroundColor: NSColor(calibratedWhite: 1.0, alpha: 0.85)
 ]
-let titleText = NSAttributedString(string: "Cleankeun Pro", attributes: titleAttrs)
+let titleText = NSAttributedString(string: "Cleankeun", attributes: titleAttrs)
 let titleSize = titleText.size()
 titleText.draw(at: NSPoint(x: (W - titleSize.width) / 2, y: H * 0.82))
 

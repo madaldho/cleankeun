@@ -1,5 +1,5 @@
 //
-//  Cleankeun Pro — macOS System Cleaner & Optimizer
+//  Cleankeun — macOS System Cleaner & Optimizer
 //  Copyright (c) 2025-2026 Muhamad Ali Ridho. All rights reserved.
 //  Licensed under the MIT License. See LICENSE file for details.
 //
@@ -11,68 +11,87 @@ class JunkCleanerService {
     static let shared = JunkCleanerService()
     private let fileManager = FileManager.default
 
-    // MARK: - Scan for Junk
-    func scanForJunk() async -> [JunkItem] {
+    // MARK: - Scan for Junk (with progress reporting)
+    func scanForJunk(
+        onProgress: ((String, Int) -> Void)? = nil
+    ) async -> [JunkItem] {
         var items: [JunkItem] = []
         let home = NSHomeDirectory()
 
-        // System Cache
-        let cachePaths = [
-            "\(home)/Library/Caches",
+        // Define all scan targets with their categories
+        let scanTargets: [(path: String, category: JunkCategory)] = [
+            // Application Cache
+            ("\(home)/Library/Caches", .appCache),
+            // System Logs
+            ("\(home)/Library/Logs", .logs),
+            ("/private/var/log", .logs),
+            // Temporary Files
+            (NSTemporaryDirectory(), .tempFiles),
+            ("/private/var/folders", .tempFiles),
+            // Browser Cache
+            ("\(home)/Library/Caches/Google/Chrome", .browserCache),
+            ("\(home)/Library/Caches/com.apple.Safari", .browserCache),
+            ("\(home)/Library/Caches/Firefox", .browserCache),
+            ("\(home)/Library/Caches/com.brave.Browser", .browserCache),
+            ("\(home)/Library/Caches/com.microsoft.edgemac", .browserCache),
+            // Xcode Cache
+            ("\(home)/Library/Developer/Xcode/DerivedData", .xcode),
+            ("\(home)/Library/Developer/Xcode/Archives", .xcode),
+            ("\(home)/Library/Developer/CoreSimulator/Caches", .xcode),
+            // Crash Reports
+            ("\(home)/Library/Logs/DiagnosticReports", .crashReports),
+            ("/Library/Logs/DiagnosticReports", .crashReports),
+            // iOS Backups
+            ("\(home)/Library/Application Support/MobileSync/Backup", .iOSBackups),
+            // Trash
+            ("\(home)/.Trash", .trash),
         ]
-        for path in cachePaths {
-            items.append(contentsOf: scanDirectory(path: path, category: .appCache))
+
+        for target in scanTargets {
+            let found = scanDirectory(path: target.path, category: target.category, onProgress: onProgress, currentCount: items.count)
+            items.append(contentsOf: found)
         }
 
-        // System Logs
-        let logPaths = [
-            "\(home)/Library/Logs",
-            "/private/var/log",
-        ]
-        for path in logPaths {
-            items.append(contentsOf: scanDirectory(path: path, category: .logs))
-        }
-
-        // Temporary Files
-        let tempPaths = [
-            NSTemporaryDirectory(),
-            "/private/var/folders",
-        ]
-        for path in tempPaths {
-            items.append(contentsOf: scanDirectory(path: path, category: .tempFiles))
-        }
-
-        // Browser Cache
-        let browserPaths = [
-            "\(home)/Library/Caches/Google/Chrome",
-            "\(home)/Library/Caches/com.apple.Safari",
-            "\(home)/Library/Caches/Firefox",
-            "\(home)/Library/Caches/com.brave.Browser",
-            "\(home)/Library/Caches/com.microsoft.edgemac",
-        ]
-        for path in browserPaths {
-            items.append(contentsOf: scanDirectory(path: path, category: .browserCache))
-        }
-
-        // Xcode Derived Data
-        let xcodePaths = [
-            "\(home)/Library/Developer/Xcode/DerivedData",
-            "\(home)/Library/Developer/Xcode/Archives",
-            "\(home)/Library/Developer/CoreSimulator/Caches",
-        ]
-        for path in xcodePaths {
-            items.append(contentsOf: scanDirectory(path: path, category: .xcode))
-        }
-
-        // Trash
-        let trashPath = "\(home)/.Trash"
-        items.append(contentsOf: scanDirectory(path: trashPath, category: .trash))
+        // Scan for unused DMGs in Downloads (top-level only, not recursive)
+        let downloadsPath = "\(home)/Downloads"
+        let dmgItems = scanDMGs(in: downloadsPath, onProgress: onProgress, currentCount: items.count)
+        items.append(contentsOf: dmgItems)
 
         return items
     }
 
+    // MARK: - Scan DMGs (top-level only in Downloads)
+    private func scanDMGs(
+        in path: String,
+        onProgress: ((String, Int) -> Void)? = nil,
+        currentCount: Int = 0
+    ) -> [JunkItem] {
+        var items: [JunkItem] = []
+        guard let contents = try? fileManager.contentsOfDirectory(atPath: path) else { return items }
+        for file in contents where file.lowercased().hasSuffix(".dmg") {
+            let fullPath = (path as NSString).appendingPathComponent(file)
+            if let attrs = try? fileManager.attributesOfItem(atPath: fullPath),
+               let fileSize = attrs[.size] as? Int64,
+               fileSize > 0 {
+                let fileType = attrs[.type] as? FileAttributeType
+                if fileType != FileAttributeType.typeDirectory {
+                    items.append(JunkItem(path: fullPath, size: fileSize, category: .unusedDMGs))
+                    if items.count % 5 == 0 {
+                        onProgress?(fullPath, currentCount + items.count)
+                    }
+                }
+            }
+        }
+        return items
+    }
+
     // MARK: - Scan Directory
-    private func scanDirectory(path: String, category: JunkCategory) -> [JunkItem] {
+    private func scanDirectory(
+        path: String,
+        category: JunkCategory,
+        onProgress: ((String, Int) -> Void)? = nil,
+        currentCount: Int = 0
+    ) -> [JunkItem] {
         var items: [JunkItem] = []
         guard fileManager.fileExists(atPath: path) else { return items }
 
@@ -85,6 +104,10 @@ class JunkCleanerService {
                     let fileType = attrs[.type] as? FileAttributeType
                     if fileType != FileAttributeType.typeDirectory {
                         items.append(JunkItem(path: fullPath, size: fileSize, category: category))
+                        // Report progress every 20 files to avoid UI flooding
+                        if items.count % 20 == 0 {
+                            onProgress?(fullPath, currentCount + items.count)
+                        }
                     }
                 }
             }
@@ -106,7 +129,7 @@ class JunkCleanerService {
         for (index, item) in selected.enumerated() {
             onProgress(index, total, freedSpace, item.fileName)
             do {
-                try fileManager.trashItem(at: URL(fileURLWithPath: item.path), resultingItemURL: nil)
+                try fileManager.removeItem(atPath: item.path)
                 deleted += 1
                 freedSpace += item.size
             } catch {

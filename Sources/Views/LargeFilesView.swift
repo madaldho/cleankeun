@@ -1,5 +1,5 @@
 //
-//  Cleankeun Pro — macOS System Cleaner & Optimizer
+//  Cleankeun — macOS System Cleaner & Optimizer
 //  Copyright (c) 2025-2026 Muhamad Ali Ridho. All rights reserved.
 //  Licensed under the MIT License. See LICENSE file for details.
 //
@@ -14,6 +14,7 @@ struct LargeFilesView: View {
     var selectedSize: Int64 { vm.largeFiles.filter(\.isSelected).reduce(0) { $0 + $1.size } }
 
     var body: some View {
+        @Bindable var vm = vm
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
@@ -30,35 +31,88 @@ struct LargeFilesView: View {
                         }
                     }
 
-                    // Filters
-                    HStack(spacing: 8) {
-                        Text("Min Size:")
-                            .font(.system(size: 11)).foregroundStyle(.secondary)
-                        ForEach(
-                            [(10, "10MB"), (50, "50MB"), (100, "100MB"), (500, "500MB")], id: \.0
-                        ) { mb, label in
-                            let size = Int64(mb) * 1024 * 1024
-                            FilterChip(label: label, isActive: vm.largeFileMinSize == size) {
-                                vm.largeFileMinSize = size
+                    // File Type Tabs (like BuhoCleaner)
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 2) {
+                            FileTypeTab(label: "All Files", icon: "doc.fill", isActive: vm.largeFileFilter == nil) {
+                                vm.largeFileFilter = nil
+                            }
+                            ForEach(LargeFileType.allCases) { ft in
+                                FileTypeTab(
+                                    label: ft.rawValue, icon: ft.icon,
+                                    isActive: vm.largeFileFilter == ft
+                                ) {
+                                    vm.largeFileFilter = ft
+                                }
+                            }
+                        }
+                    }
+                    .scrollIndicators(.hidden)
+
+                    // Filters & Sort Row
+                    HStack(spacing: 12) {
+                        // Min Size Filter
+                        HStack(spacing: 6) {
+                            Text("Min:")
+                                .font(.system(size: 11)).foregroundStyle(.secondary)
+                            ForEach(
+                                [(10, "10MB"), (50, "50MB"), (100, "100MB"), (500, "500MB")], id: \.0
+                            ) { mb, label in
+                                let size = Int64(mb) * 1024 * 1024
+                                FilterChip(label: label, isActive: vm.largeFileMinSize == size) {
+                                    vm.largeFileMinSize = size
+                                }
                             }
                         }
 
-                        Divider().frame(height: 16)
+                        Spacer()
 
-                        Text("Type:")
-                            .font(.system(size: 11)).foregroundStyle(.secondary)
-                        FilterChip(label: "All", isActive: vm.largeFileFilter == nil) {
-                            vm.largeFileFilter = nil
-                        }
-                        ForEach([LargeFileType.video, .archive, .diskImage, .audio], id: \.self) {
-                            ft in
-                            FilterChip(label: ft.rawValue, isActive: vm.largeFileFilter == ft) {
-                                vm.largeFileFilter = ft
+                        // Sort options
+                        HStack(spacing: 6) {
+                            Text("Sort:")
+                                .font(.system(size: 11)).foregroundStyle(.secondary)
+                            ForEach(LargeFileSortOption.allCases) { opt in
+                                FilterChip(label: opt.rawValue, isActive: vm.largeFileSortBy == opt) {
+                                    if vm.largeFileSortBy == opt {
+                                        vm.largeFileSortAscending.toggle()
+                                    } else {
+                                        vm.largeFileSortBy = opt
+                                        vm.largeFileSortAscending = false
+                                    }
+                                }
                             }
+
+                            // Sort direction
+                            Button {
+                                vm.largeFileSortAscending.toggle()
+                            } label: {
+                                Image(systemName: vm.largeFileSortAscending ? "arrow.up" : "arrow.down")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(Theme.brand)
+                                    .frame(width: 26, height: 26)
+                                    .background(Theme.brand.opacity(0.1), in: RoundedRectangle(cornerRadius: 5))
+                                    .contentShape(RoundedRectangle(cornerRadius: 5))
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                     .padding(10)
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                    .glassEffect(.regular, in: .rect(cornerRadius: 8))
+
+                    // Results count
+                    if !vm.largeFiles.isEmpty {
+                        HStack {
+                            Text("\(vm.largeFiles.count) files")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            let total = vm.largeFiles.reduce(0) { $0 + $1.size }
+                            Text("Total: \(ByteCountFormatter.string(fromByteCount: total, countStyle: .file))")
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .foregroundStyle(Theme.brand)
+                        }
+                    }
 
                     if vm.largeFiles.isEmpty && !vm.isScanning {
                         EmptyState(
@@ -68,9 +122,8 @@ struct LargeFilesView: View {
                                 : "No files match the current filters. Try adjusting minimum size or file type.",
                             gradient: Theme.warningGradient)
                     } else {
-                        ForEach(Array(vm.largeFiles.enumerated()), id: \.element.id) { _, file in
+                        ForEach(vm.largeFiles) { file in
                             LargeFileCard(file: file) {
-                                // BUG-26: Find by ID instead of stale index
                                 if let idx = vm.largeFiles.firstIndex(where: { $0.id == file.id }) {
                                     vm.largeFiles[idx].isSelected.toggle()
                                 }
@@ -110,7 +163,7 @@ struct LargeFilesView: View {
                         }
                         Spacer()
                         GradientButton(
-                            "Move to Trash", icon: "trash",
+                            "Delete Permanently", icon: "trash",
                             gradient: selectedCount > 0
                                 ? Theme.dangerGradient
                                 : LinearGradient(
@@ -118,16 +171,17 @@ struct LargeFilesView: View {
                         ) {
                             showConfirm = true
                         }
+                        .disabled(selectedCount == 0)
                     }
                 }
-                .alert("Delete \(selectedCount) files?", isPresented: $showConfirm) {
+                .alert("Permanently delete \(selectedCount) files?", isPresented: $showConfirm) {
                     Button("Cancel", role: .cancel) {}
-                    Button("Move to Trash", role: .destructive) {
+                    Button("Delete Permanently", role: .destructive) {
                         Task { await vm.deleteLargeFiles() }
                     }
                 } message: {
                     Text(
-                        "Free up \(ByteCountFormatter.string(fromByteCount: selectedSize, countStyle: .file)) by moving selected files to Trash"
+                        "Permanently delete selected files (\(ByteCountFormatter.string(fromByteCount: selectedSize, countStyle: .file)))? This cannot be undone."
                     )
                 }
             }
@@ -137,6 +191,32 @@ struct LargeFilesView: View {
                 Task { await vm.scanLargeFiles() }
             }
         }
+    }
+}
+
+// MARK: - File Type Tab (BuhoCleaner-style)
+struct FileTypeTab: View {
+    let label: String
+    let icon: String
+    let isActive: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 11))
+                Text(label)
+                    .font(.system(size: 12, weight: isActive ? .semibold : .regular))
+            }
+            .foregroundStyle(isActive ? Theme.brand : .secondary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(isActive ? Theme.brand.opacity(0.12) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .contentShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -168,6 +248,14 @@ struct LargeFileCard: View {
     let onToggle: () -> Void
     @State private var isHovered = false
 
+    // H4: static date formatter
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .none
+        return f
+    }()
+
     var body: some View {
         HStack(spacing: 12) {
             Button(action: onToggle) {
@@ -187,9 +275,11 @@ struct LargeFileCard: View {
                 Text(file.fileName)
                     .font(.system(size: 12, weight: .medium))
                     .lineLimit(1).truncationMode(.middle)
-                Text(file.path)
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundStyle(.tertiary).lineLimit(1).truncationMode(.head)
+                HStack(spacing: 6) {
+                    Text(file.path)
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(.tertiary).lineLimit(1).truncationMode(.head)
+                }
             }
 
             Spacer()
@@ -198,9 +288,17 @@ struct LargeFileCard: View {
                 Text(file.formattedSize)
                     .font(.system(size: 14, weight: .bold, design: .rounded))
                     .foregroundStyle(Theme.brand)
-                Text(file.fileType.rawValue)
-                    .font(.system(size: 9))
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    Text(file.fileType.rawValue)
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                    Text("•")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.quaternary)
+                    Text(Self.dateFormatter.string(from: file.modificationDate))
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                }
             }
 
             Button {
@@ -218,6 +316,7 @@ struct LargeFileCard: View {
         .padding(14)
         .background {
             RoundedRectangle(cornerRadius: 12).fill(.regularMaterial)
+                .glassEffect(.regular, in: .rect(cornerRadius: 12))
                 .shadow(
                     color: .primary.opacity(isHovered ? 0.07 : 0.04), radius: isHovered ? 6 : 3, y: 2
                 )

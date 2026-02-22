@@ -1,5 +1,5 @@
 //
-//  Cleankeun Pro — macOS System Cleaner & Optimizer
+//  Cleankeun — macOS System Cleaner & Optimizer
 //  Copyright (c) 2025-2026 Muhamad Ali Ridho. All rights reserved.
 //  Licensed under the MIT License. See LICENSE file for details.
 //
@@ -13,6 +13,7 @@ struct ToolkitView: View {
     @State private var showTrashConfirm = false
     @State private var trashItemCount = 0
     @State private var trashSize: Int64 = 0
+    @State private var trashAccessDenied = false
 
     var body: some View {
         if let tool = activeIntroTool, tool == "spotlight" {
@@ -122,7 +123,11 @@ struct ToolkitView: View {
                         let info = ToolkitService.shared.getTrashInfo()
                         trashItemCount = info.itemCount
                         trashSize = info.totalSize
-                        if info.itemCount == 0 {
+                        trashAccessDenied = info.accessDenied
+                        if info.accessDenied {
+                            // Can't read trash, but Finder can still empty it — ask user to confirm
+                            showTrashConfirm = true
+                        } else if info.itemCount == 0 {
                             toolResults["trash"] = ToolResult(state: .success, message: "Trash is already empty")
                         } else {
                             showTrashConfirm = true
@@ -177,12 +182,19 @@ struct ToolkitView: View {
                 }
             }
         } message: {
-            Text("Permanently delete \(trashItemCount) items (\(ByteCountFormatter.string(fromByteCount: trashSize, countStyle: .file)))? This cannot be undone.")
+            if trashAccessDenied {
+                Text("Cleankeun can't read the Trash folder directly, but Finder can empty it for you. Proceed?")
+            } else {
+                Text("Permanently delete \(trashItemCount) items (\(ByteCountFormatter.string(fromByteCount: trashSize, countStyle: .file)))? This cannot be undone.")
+            }
         }
     }
 
     private var trashDescription: String {
         let info = ToolkitService.shared.getTrashInfo()
+        if info.accessDenied {
+            return "Click Run to empty Trash via Finder. Grant Full Disk Access in System Settings for detailed info."
+        }
         if info.itemCount == 0 {
             return "Trash is empty — nothing to clean."
         }
@@ -194,6 +206,7 @@ struct ToolkitView: View {
         let info = ToolkitService.shared.getTrashInfo()
         trashItemCount = info.itemCount
         trashSize = info.totalSize
+        trashAccessDenied = info.accessDenied
     }
 
     private func runTool(
@@ -288,6 +301,7 @@ struct ToolCard: View {
         .background(
             RoundedRectangle(cornerRadius: 14)
                 .fill(.regularMaterial)
+                .glassEffect(.regular, in: .rect(cornerRadius: 14))
                 .shadow(
                     color: .primary.opacity(isHovered ? 0.08 : 0.04), radius: isHovered ? 8 : 4, y: 2)
         )

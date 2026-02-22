@@ -94,7 +94,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **DMG installer now professional** — Uses `create-dmg` with custom dark background, proper icon layout (app on left, Applications on right), volume icon, and Finder-stored `.DS_Store` layout. Drag-to-install works like professional macOS apps.
-- **App properly registers** — App installs to `/Applications` as a proper `.app` bundle and registers with Launch Services (`com.cleankeun.pro`).
+- **App properly registers** — App installs to `/Applications` as a proper `.app` bundle and registers with Launch Services (`com.cleankeun.app`).
 - **Menu bar icon** — Changed to `sparkles` SF Symbol for consistency with app icon theme.
 - **Consistent app icon** — Generated via compiled Swift matching `CleankeunLogo.swift` design (blue gradient + sweep arc + sparkles).
 

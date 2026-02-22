@@ -1,5 +1,5 @@
 //
-//  Cleankeun Pro — macOS System Cleaner & Optimizer
+//  Cleankeun — macOS System Cleaner & Optimizer
 //  Copyright (c) 2025-2026 Muhamad Ali Ridho. All rights reserved.
 //  Licensed under the MIT License. See LICENSE file for details.
 //
@@ -47,6 +47,9 @@ struct SidebarView: View {
     @Binding var selectedNav: NavigationItem
     @Environment(AppViewModel.self) var vm
 
+    // Sections to show (skip .overview — Dashboard is rendered separately at top)
+    private let sections: [NavigationSection] = [.cleaning, .system, .tools]
+
     var body: some View {
         VStack(spacing: 0) {
             // App branding
@@ -55,25 +58,41 @@ struct SidebarView: View {
 
                 Text("Cleankeun")
                     .font(.system(size: 16, weight: .bold, design: .rounded))
-                Text("Pro Edition")
+                Text("System Cleaner")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.secondary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(.fill.tertiary, in: .capsule)
             }
             .padding(.top, 12)
             .padding(.bottom, 16)
 
             Divider().padding(.horizontal, 20)
 
-            // Nav items
+            // Nav items grouped by section
             ScrollView {
                 VStack(spacing: 2) {
-                    ForEach(NavigationItem.allCases) { item in
-                        SidebarButton(item: item, isSelected: selectedNav == item) {
-                            withAnimation(.easeInOut(duration: 0.15)) {
-                                selectedNav = item
+                    // Dashboard at top (no section header)
+                    SidebarButton(item: .dashboard, isSelected: selectedNav == .dashboard) {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            selectedNav = .dashboard
+                        }
+                    }
+
+                    // Grouped sections
+                    ForEach(sections) { section in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(section.rawValue.uppercased())
+                                .font(.system(size: 9, weight: .bold, design: .rounded))
+                                .foregroundStyle(.tertiary)
+                                .padding(.leading, 14)
+                                .padding(.top, 14)
+                                .padding(.bottom, 4)
+
+                            ForEach(NavigationItem.items(for: section)) { item in
+                                SidebarButton(item: item, isSelected: selectedNav == item) {
+                                    withAnimation(.easeInOut(duration: 0.15)) {
+                                        selectedNav = item
+                                    }
+                                }
                             }
                         }
                     }
@@ -324,6 +343,7 @@ struct GlassCard<Content: View>: View {
             .background {
                 RoundedRectangle(cornerRadius: 14)
                     .fill(.regularMaterial)
+                    .glassEffect(.regular, in: .rect(cornerRadius: 14))
                     .shadow(color: .primary.opacity(0.06), radius: 8, y: 3)
             }
     }

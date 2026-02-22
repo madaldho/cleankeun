@@ -1,11 +1,12 @@
 //
-//  Cleankeun Pro — macOS System Cleaner & Optimizer
+//  Cleankeun — macOS System Cleaner & Optimizer
 //  Copyright (c) 2025-2026 Muhamad Ali Ridho. All rights reserved.
 //  Licensed under the MIT License. See LICENSE file for details.
 //
 
 import Foundation
 import Darwin
+import IOKit
 
 // H5: Removed @MainActor — this service performs blocking I/O (Mach kernel calls,
 // getifaddrs, FileManager) and is called from within a Task in AppViewModel.
@@ -14,6 +15,8 @@ class SystemMonitorService {
     static let shared = SystemMonitorService()
 
     private var prevCPUInfo: host_cpu_load_info?
+    private var smcConnection: io_connect_t = 0
+    private var smcOpened = false
 
     // MARK: - CPU Info
     func getCPUInfo() -> CPUInfo {
@@ -63,7 +66,137 @@ class SystemMonitorService {
         )
     }
 
+    // MARK: - CPU Temperature via SMC
+    // Uses IOKit to read Apple SMC (System Management Controller) temperature sensors.
+    // Works on both Intel and Apple Silicon without root privileges.
+
+    private struct SMCKeyData {
+        struct Vers {
+            var major: UInt8 = 0
+            var minor: UInt8 = 0
+            var build: UInt8 = 0
+            var reserved: UInt8 = 0
+            var release: UInt16 = 0
+        }
+        struct PLimitData {
+            var version: UInt16 = 0
+            var length: UInt16 = 0
+            var cpuPLimit: UInt32 = 0
+            var gpuPLimit: UInt32 = 0
+            var memPLimit: UInt32 = 0
+        }
+        struct KeyInfo {
+            var dataSize: UInt32 = 0
+            var dataType: UInt32 = 0
+            var dataAttributes: UInt8 = 0
+        }
+
+        var key: UInt32 = 0
+        var vers: Vers = Vers()
+        var pLimitData: PLimitData = PLimitData()
+        var keyInfo: KeyInfo = KeyInfo()
+        var padding: UInt16 = 0
+        var result: UInt8 = 0
+        var status: UInt8 = 0
+        var data8: UInt8 = 0
+        var data32: UInt32 = 0
+        var bytes: (UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8,
+                     UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8,
+                     UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8,
+                     UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8) =
+            (0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0)
+    }
+
+    private static let smcKernelIndexRead: UInt8 = 5
+
+    private func fourCharCode(_ str: String) -> UInt32 {
+        var result: UInt32 = 0
+        for char in str.utf8.prefix(4) {
+            result = (result << 8) | UInt32(char)
+        }
+        return result
+    }
+
+    private func openSMC() -> Bool {
+        if smcOpened { return true }
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSMC"))
+        guard service != 0 else { return false }
+        defer { IOObjectRelease(service) }
+        let result = IOServiceOpen(service, mach_task_self_, 0, &smcConnection)
+        smcOpened = (result == kIOReturnSuccess)
+        return smcOpened
+    }
+
+    private func readSMCKey(_ key: String) -> Double? {
+        guard openSMC() else { return nil }
+
+        var inputStruct = SMCKeyData()
+        var outputStruct = SMCKeyData()
+
+        inputStruct.key = fourCharCode(key)
+        inputStruct.data8 = Self.smcKernelIndexRead
+
+        var outputSize = MemoryLayout<SMCKeyData>.size
+        let result = withUnsafeMutablePointer(to: &inputStruct) { inPtr in
+            withUnsafeMutablePointer(to: &outputStruct) { outPtr in
+                IOConnectCallStructMethod(
+                    smcConnection,
+                    2, // kSMCHandleYPCEvent
+                    inPtr,
+                    MemoryLayout<SMCKeyData>.size,
+                    outPtr,
+                    &outputSize
+                )
+            }
+        }
+
+        guard result == kIOReturnSuccess else { return nil }
+
+        // Read data size for this key
+        let dataSize = outputStruct.keyInfo.dataSize
+        guard dataSize >= 2 else { return nil }
+
+        // Now do the actual read
+        var readInput = SMCKeyData()
+        var readOutput = SMCKeyData()
+        readInput.key = fourCharCode(key)
+        readInput.keyInfo.dataSize = dataSize
+        readInput.data8 = Self.smcKernelIndexRead
+
+        outputSize = MemoryLayout<SMCKeyData>.size
+        let readResult = withUnsafeMutablePointer(to: &readInput) { inPtr in
+            withUnsafeMutablePointer(to: &readOutput) { outPtr in
+                IOConnectCallStructMethod(
+                    smcConnection,
+                    2,
+                    inPtr,
+                    MemoryLayout<SMCKeyData>.size,
+                    outPtr,
+                    &outputSize
+                )
+            }
+        }
+
+        guard readResult == kIOReturnSuccess else { return nil }
+
+        // Interpret as sp78 (signed 7.8 fixed point) or flt (float)
+        let b0 = readOutput.bytes.0
+        let b1 = readOutput.bytes.1
+        let temp = Double(Int16(b0) << 8 | Int16(b1)) / 256.0
+
+        // Sanity check: valid CPU temps are between 0°C and 120°C
+        guard temp > 0 && temp < 120 else { return nil }
+        return temp
+    }
+
     private func getCPUTemperature() -> Double? {
+        // Try common Apple SMC keys for CPU temperature
+        // TC0P = CPU proximity, TC0D = CPU die, Tp09/Tp0T = Apple Silicon efficiency/performance cores
+        for key in ["TC0P", "TC0D", "Tp09", "Tp0T", "TC0E", "TC0F"] {
+            if let temp = readSMCKey(key) {
+                return temp
+            }
+        }
         return nil
     }
 

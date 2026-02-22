@@ -1,5 +1,5 @@
 //
-//  Cleankeun Pro — macOS System Cleaner & Optimizer
+//  Cleankeun — macOS System Cleaner & Optimizer
 //  Copyright (c) 2025-2026 Muhamad Ali Ridho. All rights reserved.
 //  Licensed under the MIT License. See LICENSE file for details.
 //
@@ -20,6 +20,10 @@ class AppViewModel {
     var cleaningProgress: Double = 0
     var cleaningCurrentFile = ""
     var cleaningFreedSoFar: Int64 = 0
+
+    // Scanning progress (for Flash Clean animated scan)
+    var scanningCurrentPath = ""
+    var scanningFilesFound = 0
 
     // Dashboard
     var diskTotal: Int64 = 0
@@ -48,6 +52,15 @@ class AppViewModel {
     var largeFileFilter: LargeFileType? = nil {
         didSet { applyLargeFileFilters() }
     }
+    var largeFileSortBy: LargeFileSortOption = .size {
+        didSet { applyLargeFileFilters() }
+    }
+    var largeFileSortAscending: Bool = false {
+        didSet { applyLargeFileFilters() }
+    }
+
+    // App sort
+    var appSortBy: AppSortOption = .name
 
     // Duplicates
     var duplicateGroups: [DuplicateGroup] = []
@@ -63,17 +76,173 @@ class AppViewModel {
     // Shredder
     var shredItems: [ShredItem] = []
 
+    // Duplicate scan scope (Feature 5)
+    var duplicateScanPaths: [String: Bool] = {
+        let home = NSHomeDirectory()
+        return [
+            "\(home)/Downloads": true,
+            "\(home)/Desktop": true,
+            "\(home)/Documents": true,
+            "\(home)/Pictures": true,
+            "\(home)/Movies": true,
+            "\(home)/Music": true,
+        ]
+    }()
+    var duplicateScanHidden: Bool = false
+
+    // Storage categories (Feature 7)
+    var storageCategories: [StorageCategoryInfo] = []
+    private var storageScanInProgress = false
+
     // Monitor task handle for structured concurrency
     private var monitorTask: Task<Void, Never>?
     private var monitorRefCount = 0
 
-    var filteredApps: [InstalledApp] {
-        if appSearchText.isEmpty { return installedApps }
-        return installedApps.filter { $0.name.localizedStandardContains(appSearchText) }
+    // MARK: - Health Score (Feature 2)
+    /// System health score from 0-100. Higher = healthier.
+    var systemHealthScore: Int {
+        var score = 100
+
+        // RAM pressure penalty (0-40 points)
+        if let mem = memoryInfo {
+            let ramPct = mem.usagePercentage
+            if ramPct > 90 { score -= 40 }
+            else if ramPct > 80 { score -= 25 }
+            else if ramPct > 70 { score -= 15 }
+            else if ramPct > 60 { score -= 5 }
+        }
+
+        // Disk usage penalty (0-35 points)
+        if diskTotal > 0 {
+            let diskPct = Double(diskUsed) / Double(diskTotal) * 100
+            if diskPct > 95 { score -= 35 }
+            else if diskPct > 90 { score -= 25 }
+            else if diskPct > 85 { score -= 15 }
+            else if diskPct > 75 { score -= 5 }
+        }
+
+        // CPU load penalty (0-25 points)
+        if let cpu = cpuInfo {
+            if cpu.usagePercentage > 90 { score -= 25 }
+            else if cpu.usagePercentage > 70 { score -= 15 }
+            else if cpu.usagePercentage > 50 { score -= 8 }
+        }
+
+        return max(0, min(100, score))
     }
 
-    var selectedJunkSize: Int64 { junkItems.filter(\.isSelected).reduce(0) { $0 + $1.size } }
-    var selectedJunkCount: Int { junkItems.filter(\.isSelected).count }
+    var healthScoreColor: (r: Double, g: Double, b: Double) {
+        if systemHealthScore >= 80 { return (0.3, 0.8, 0.4) }  // Green
+        if systemHealthScore >= 50 { return (1.0, 0.7, 0.2) }  // Yellow/Orange
+        return (0.9, 0.3, 0.3)  // Red
+    }
+
+    var healthRecommendations: [(icon: String, text: String)] {
+        var recs: [(String, String)] = []
+        if let mem = memoryInfo, mem.usagePercentage > 75 {
+            recs.append(("memorychip", "High RAM usage (\(Int(mem.usagePercentage))%) — consider freeing memory"))
+        }
+        if diskTotal > 0 {
+            let diskPct = Double(diskUsed) / Double(diskTotal) * 100
+            if diskPct > 80 {
+                recs.append(("internaldrive", "Disk is \(Int(diskPct))% full — run Flash Clean or remove large files"))
+            }
+        }
+        if let cpu = cpuInfo, cpu.usagePercentage > 70 {
+            recs.append(("cpu", "CPU load is high (\(Int(cpu.usagePercentage))%) — check running processes"))
+        }
+        if totalJunkSize > 500 * 1024 * 1024 {
+            recs.append(("trash", "Over 500 MB of junk detected — run Flash Clean"))
+        }
+        if recs.isEmpty {
+            recs.append(("checkmark.seal.fill", "System is running smoothly!"))
+        }
+        return recs
+    }
+
+    // MARK: - Storage Categories (Feature 7)
+    /// Public entry point — dispatches to background. Safe to call from MainActor.
+    func scanStorageCategories() {
+        guard !storageScanInProgress else { return }
+        storageScanInProgress = true
+        Task.detached { [weak self] in
+            guard let self else { return }
+            let diskUsed = await self.diskUsed
+            let categories = Self.computeStorageCategories(diskUsed: diskUsed)
+            await MainActor.run {
+                self.storageCategories = categories
+                self.storageScanInProgress = false
+            }
+        }
+    }
+
+    /// Heavy work — runs off main thread.
+    nonisolated private static func computeStorageCategories(diskUsed: Int64) -> [StorageCategoryInfo] {
+        let home = NSHomeDirectory()
+        let categoryPaths: [(StorageCategory, [String])] = [
+            (.apps, ["/Applications", "\(home)/Applications"]),
+            (.documents, ["\(home)/Documents", "\(home)/Desktop", "\(home)/Downloads"]),
+            (.media, ["\(home)/Pictures", "\(home)/Movies", "\(home)/Music"]),
+            (.developer, ["\(home)/Library/Developer", "\(home)/Developer"]),
+        ]
+
+        var results: [StorageCategoryInfo] = []
+        var accountedSize: Int64 = 0
+
+        for (cat, paths) in categoryPaths {
+            var catSize: Int64 = 0
+            for path in paths {
+                catSize += directorySizeSync(path: path)
+            }
+            results.append(StorageCategoryInfo(category: cat, size: catSize))
+            accountedSize += catSize
+        }
+
+        // System = Library minus Developer
+        let librarySize = directorySizeSync(path: "\(home)/Library")
+        let developerSize = results.first(where: { $0.category == .developer })?.size ?? 0
+        let systemSize = max(0, librarySize - developerSize)
+        results.append(StorageCategoryInfo(category: .system, size: systemSize))
+        accountedSize += systemSize
+
+        // Other = used - accounted
+        let otherSize = max(0, diskUsed - accountedSize)
+        results.append(StorageCategoryInfo(category: .other, size: otherSize))
+
+        return results.sorted { $0.size > $1.size }
+    }
+
+    var filteredApps: [InstalledApp] {
+        var apps: [InstalledApp]
+        if appSearchText.isEmpty {
+            apps = installedApps
+        } else {
+            apps = installedApps.filter { $0.name.localizedStandardContains(appSearchText) }
+        }
+        switch appSortBy {
+        case .name:
+            apps.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        case .size:
+            apps.sort { $0.totalSize > $1.totalSize }
+        case .date:
+            apps.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending } // fallback, no date available
+        }
+        return apps
+    }
+
+    var selectedJunkSize: Int64 = 0
+    var selectedJunkCount: Int = 0
+
+    private func updateJunkSelection() {
+        var size: Int64 = 0
+        var count = 0
+        for item in junkItems where item.isSelected {
+            size += item.size
+            count += 1
+        }
+        selectedJunkSize = size
+        selectedJunkCount = count
+    }
 
     // MARK: - Monitor (H8: Use structured concurrency instead of Timer)
     func startMonitoring() {
@@ -104,19 +273,45 @@ class AppViewModel {
         memoryInfo = MemoryService.shared.getMemoryInfo()
         cpuInfo = SystemMonitorService.shared.getCPUInfo()
         networkInfo = SystemMonitorService.shared.getNetworkSpeed()
+        // Scan storage categories lazily in the background (only once)
+        if storageCategories.isEmpty && !storageScanInProgress {
+            storageScanInProgress = true
+            Task.detached { [weak self] in
+                guard let self else { return }
+                let used = await self.diskUsed
+                let categories = Self.computeStorageCategories(diskUsed: used)
+                await MainActor.run {
+                    self.storageCategories = categories
+                    self.storageScanInProgress = false
+                }
+            }
+        }
     }
 
     // MARK: - Junk Cleaner
     func scanJunk() async {
         isScanning = true; scanProgress = 0
+        scanningCurrentPath = ""
+        scanningFilesFound = 0
         statusMessage = "Scanning for junk files..."
-        let items = await JunkCleanerService.shared.scanForJunk()
+
+        let items = await Task.detached { [weak self] () -> [JunkItem] in
+            return await JunkCleanerService.shared.scanForJunk { path, count in
+                Task { @MainActor in
+                    self?.scanningCurrentPath = path
+                    self?.scanningFilesFound = count
+                }
+            }
+        }.value
+
         junkItems = items
         totalJunkSize = items.reduce(0) { $0 + $1.size }
         var grouped: [JunkCategory: [JunkItem]] = [:]
         for item in items { grouped[item.category, default: []].append(item) }
         junkByCategory = grouped
+        updateJunkSelection()
         isScanning = false; scanProgress = 1.0
+        scanningCurrentPath = ""
         statusMessage = "Found \(items.count) junk files (\(ByteCountFormatter.string(fromByteCount: totalJunkSize, countStyle: .file)))"
     }
 
@@ -125,7 +320,7 @@ class AppViewModel {
         cleaningProgress = 0
         cleaningCurrentFile = ""
         cleaningFreedSoFar = 0
-        statusMessage = "Cleaning..."
+        statusMessage = "Permanently deleting files..."
 
         let itemsToClean = junkItems
         let result = await Task.detached { [weak self] () -> (deleted: Int, freedSpace: Int64, errors: [String]) in
@@ -139,7 +334,7 @@ class AppViewModel {
             }
         }.value
 
-        let cleanMsg = "Cleaned \(result.deleted) files, freed \(ByteCountFormatter.string(fromByteCount: result.freedSpace, countStyle: .file))"
+        let cleanMsg = "Permanently deleted \(result.deleted) files, freed \(ByteCountFormatter.string(fromByteCount: result.freedSpace, countStyle: .file))"
         await scanJunk()
         statusMessage = cleanMsg
         isCleaning = false
@@ -147,20 +342,29 @@ class AppViewModel {
     }
 
     func toggleAllJunk(selected: Bool) {
-        junkItems = junkItems.map { var i = $0; i.isSelected = selected; return i }
+        for i in junkItems.indices {
+            junkItems[i].isSelected = selected
+        }
         rebuildJunkCategories()
+        updateJunkSelection()
     }
 
     func toggleJunkCategory(_ category: JunkCategory, selected: Bool) {
-        junkItems = junkItems.map { var i = $0; if i.category == category { i.isSelected = selected }; return i }
-        rebuildJunkCategories()
+        for i in junkItems.indices where junkItems[i].category == category {
+            junkItems[i].isSelected = selected
+        }
+        // Only rebuild the one category that changed
+        junkByCategory[category] = junkItems.filter { $0.category == category }
+        updateJunkSelection()
     }
 
     func toggleJunkItem(_ item: JunkItem) {
-        if let idx = junkItems.firstIndex(where: { $0.id == item.id }) {
-            junkItems[idx].isSelected.toggle()
-            rebuildJunkCategories()
-        }
+        guard let idx = junkItems.firstIndex(where: { $0.id == item.id }) else { return }
+        junkItems[idx].isSelected.toggle()
+        // Only rebuild the category this item belongs to
+        let cat = junkItems[idx].category
+        junkByCategory[cat] = junkItems.filter { $0.category == cat }
+        updateJunkSelection()
     }
 
     private func rebuildJunkCategories() {
@@ -181,7 +385,7 @@ class AppViewModel {
     func uninstallApp(_ app: InstalledApp) async {
         isScanning = true; statusMessage = "Uninstalling \(app.name)..."
         let result = AppUninstallerService.shared.uninstallApp(app)
-        statusMessage = result.success ? "\(app.name) moved to Trash" : "Failed"
+        statusMessage = result.success ? "\(app.name) removed" : "Failed"
         if result.success { await scanApps() }
         isScanning = false
     }
@@ -198,19 +402,31 @@ class AppViewModel {
     }
 
     /// Filters `allScannedLargeFiles` by current `largeFileMinSize` and `largeFileFilter`,
-    /// storing the result in `largeFiles` for display.
+    /// then sorts by the current sort option, storing the result in `largeFiles` for display.
     func applyLargeFileFilters() {
-        largeFiles = allScannedLargeFiles.filter { file in
+        var filtered = allScannedLargeFiles.filter { file in
             if file.size < largeFileMinSize { return false }
             if let typeFilter = largeFileFilter, file.fileType != typeFilter { return false }
             return true
         }
+
+        // Apply sorting
+        switch largeFileSortBy {
+        case .size:
+            filtered.sort { largeFileSortAscending ? $0.size < $1.size : $0.size > $1.size }
+        case .name:
+            filtered.sort { largeFileSortAscending ? $0.fileName.localizedStandardCompare($1.fileName) == .orderedAscending : $0.fileName.localizedStandardCompare($1.fileName) == .orderedDescending }
+        case .date:
+            filtered.sort { largeFileSortAscending ? $0.modificationDate < $1.modificationDate : $0.modificationDate > $1.modificationDate }
+        }
+
+        largeFiles = filtered
     }
 
     func deleteLargeFiles() async {
         isScanning = true
         let result = LargeFileScannerService.shared.deleteFiles(largeFiles)
-        let deleteMsg = "Freed \(ByteCountFormatter.string(fromByteCount: result.freedSpace, countStyle: .file))"
+        let deleteMsg = "Permanently deleted \(result.deleted) files, freed \(ByteCountFormatter.string(fromByteCount: result.freedSpace, countStyle: .file))"
         // Remove deleted files from allScannedLargeFiles too
         let deletedPaths = Set(largeFiles.filter(\.isSelected).map(\.path))
         allScannedLargeFiles.removeAll { deletedPaths.contains($0.path) }
@@ -222,7 +438,8 @@ class AppViewModel {
     // MARK: - Duplicates
     func scanDuplicates() async {
         isScanning = true; statusMessage = "Finding duplicates..."
-        duplicateGroups = await DuplicateFinderService.shared.scanForDuplicates()
+        let paths = duplicateScanPaths.filter { $0.value }.map { $0.key }
+        duplicateGroups = await DuplicateFinderService.shared.scanForDuplicates(paths: paths, includeHidden: duplicateScanHidden)
         totalDuplicatesSize = duplicateGroups.reduce(0) { $0 + $1.wastedSpace }
         isScanning = false
         statusMessage = "Found \(duplicateGroups.count) groups (\(ByteCountFormatter.string(fromByteCount: totalDuplicatesSize, countStyle: .file)) wasted)"
@@ -232,10 +449,28 @@ class AppViewModel {
         isScanning = true
         let all = duplicateGroups.flatMap(\.files).filter(\.isSelected)
         let result = DuplicateFinderService.shared.deleteFiles(all)
-        let deleteMsg = "Freed \(ByteCountFormatter.string(fromByteCount: result.freedSpace, countStyle: .file))"
+        let deleteMsg = "Permanently deleted \(result.deleted) duplicates, freed \(ByteCountFormatter.string(fromByteCount: result.freedSpace, countStyle: .file))"
         await scanDuplicates()
         statusMessage = deleteMsg
         isScanning = false
+    }
+
+    /// Smart Select: for each duplicate group, select all copies except the first (original)
+    func smartSelectDuplicates() {
+        for gi in duplicateGroups.indices {
+            for fi in duplicateGroups[gi].files.indices {
+                duplicateGroups[gi].files[fi].isSelected = fi > 0
+            }
+        }
+    }
+
+    /// Deselect all duplicates
+    func deselectAllDuplicates() {
+        for gi in duplicateGroups.indices {
+            for fi in duplicateGroups[gi].files.indices {
+                duplicateGroups[gi].files[fi].isSelected = false
+            }
+        }
     }
 
     // MARK: - Memory
@@ -303,12 +538,20 @@ class AppViewModel {
     }
 
     private func directorySize(path: String) -> Int64 {
+        Self.directorySizeSync(path: path)
+    }
+
+    nonisolated private static func directorySizeSync(path: String) -> Int64 {
         var total: Int64 = 0
-        if let e = FileManager.default.enumerator(atPath: path) {
-            while let f = e.nextObject() as? String {
-                let fp = (path as NSString).appendingPathComponent(f)
-                if let s = (try? FileManager.default.attributesOfItem(atPath: fp))?[.size] as? Int64 { total += s }
-            }
+        guard let enumerator = FileManager.default.enumerator(
+            at: URL(fileURLWithPath: path),
+            includingPropertiesForKeys: [.totalFileAllocatedSizeKey, .isRegularFileKey],
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+        ) else { return 0 }
+        while let url = enumerator.nextObject() as? URL {
+            guard let values = try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey, .isRegularFileKey]),
+                  values.isRegularFile == true else { continue }
+            total += Int64(values.totalFileAllocatedSize ?? 0)
         }
         return total
     }

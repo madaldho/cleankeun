@@ -1,5 +1,5 @@
 //
-//  Cleankeun Pro — macOS System Cleaner & Optimizer
+//  Cleankeun — macOS System Cleaner & Optimizer
 //  Copyright (c) 2025-2026 Muhamad Ali Ridho. All rights reserved.
 //  Licensed under the MIT License. See LICENSE file for details.
 //
@@ -149,18 +149,31 @@ class ToolkitService {
     }
 
     // MARK: - Trash Info
-    func getTrashInfo() -> (itemCount: Int, totalSize: Int64) {
+    /// Returns trash item count, total size, and whether access was denied.
+    /// `accessDenied` = true means the app doesn't have Full Disk Access permission.
+    func getTrashInfo() -> (itemCount: Int, totalSize: Int64, accessDenied: Bool) {
         let fm = FileManager.default
         var totalItems = 0
         var totalSize: Int64 = 0
+        var accessDenied = false
 
         // 1. User trash: ~/.Trash
         let userTrash = "\(NSHomeDirectory())/.Trash"
-        if let items = try? fm.contentsOfDirectory(atPath: userTrash) {
-            totalItems += items.count
-            for item in items {
+        do {
+            let items = try fm.contentsOfDirectory(atPath: userTrash)
+            // Filter out only .DS_Store and .localized (macOS metadata), keep everything else
+            let realItems = items.filter { $0 != ".DS_Store" && $0 != ".localized" }
+            totalItems += realItems.count
+            for item in realItems {
                 let fullPath = (userTrash as NSString).appendingPathComponent(item)
                 totalSize += sizeOfItem(atPath: fullPath, fm: fm)
+            }
+        } catch {
+            // "Operation not permitted" = app doesn't have Full Disk Access
+            if (error as NSError).code == NSFileReadNoPermissionError
+                || error.localizedDescription.contains("Operation not permitted")
+                || (error as NSError).code == 257 {
+                accessDenied = true
             }
         }
 
@@ -169,17 +182,21 @@ class ToolkitService {
         if let volumes = try? fm.contentsOfDirectory(atPath: "/Volumes") {
             for vol in volumes {
                 let trashPath = "/Volumes/\(vol)/.Trashes/\(uid)"
-                if let items = try? fm.contentsOfDirectory(atPath: trashPath) {
-                    totalItems += items.count
-                    for item in items {
+                do {
+                    let items = try fm.contentsOfDirectory(atPath: trashPath)
+                    let realItems = items.filter { $0 != ".DS_Store" && $0 != ".localized" }
+                    totalItems += realItems.count
+                    for item in realItems {
                         let fullPath = (trashPath as NSString).appendingPathComponent(item)
                         totalSize += sizeOfItem(atPath: fullPath, fm: fm)
                     }
+                } catch {
+                    // Volume trash might also be inaccessible
                 }
             }
         }
 
-        return (totalItems, totalSize)
+        return (totalItems, totalSize, accessDenied)
     }
 
     private func sizeOfItem(atPath path: String, fm: FileManager) -> Int64 {
@@ -203,43 +220,37 @@ class ToolkitService {
         }
     }
 
-    // MARK: - Empty Trash Securely
+    // MARK: - Empty Trash
+    /// Empties the Trash using Finder via AppleScript.
+    /// This bypasses Full Disk Access requirements because Finder always has
+    /// permission to manage the Trash. The user will see Finder's own confirmation
+    /// dialog if they have that enabled in Finder preferences.
     func emptyTrash() async -> (success: Bool, message: String) {
-        let fm = FileManager.default
-        var totalDeleted = 0
-        var errors = 0
+        // First check if we can even read trash (to report accurate status)
+        let info = getTrashInfo()
 
-        // Helper to clean a trash directory
-        func cleanTrashDir(_ path: String) {
-            guard let items = try? fm.contentsOfDirectory(atPath: path) else { return }
-            for item in items {
-                let fullPath = (path as NSString).appendingPathComponent(item)
-                do {
-                    try fm.removeItem(atPath: fullPath)
-                    totalDeleted += 1
-                } catch {
-                    errors += 1
-                }
-            }
-        }
-
-        // 1. User trash
-        cleanTrashDir("\(NSHomeDirectory())/.Trash")
-
-        // 2. Volume trashes
-        let uid = getuid()
-        if let volumes = try? fm.contentsOfDirectory(atPath: "/Volumes") {
-            for vol in volumes {
-                cleanTrashDir("/Volumes/\(vol)/.Trashes/\(uid)")
-            }
-        }
-
-        if totalDeleted == 0 && errors == 0 {
+        if !info.accessDenied && info.itemCount == 0 {
             return (true, "Trash is already empty")
-        } else if errors == 0 {
-            return (true, "Trash emptied (\(totalDeleted) items removed)")
+        }
+
+        // Use Finder via AppleScript — this always works regardless of FDA
+        let script = "tell application \"Finder\" to empty trash"
+        let result = await runProcess(
+            executableURL: URL(fileURLWithPath: "/usr/bin/osascript"),
+            arguments: ["-e", script]
+        )
+
+        if result.success {
+            let sizeStr = ByteCountFormatter.string(fromByteCount: info.totalSize, countStyle: .file)
+            if info.accessDenied {
+                return (true, "Trash emptied via Finder")
+            } else {
+                return (true, "Trash emptied — \(info.itemCount) items removed (\(sizeStr) freed)")
+            }
+        } else if result.errorOutput.contains("User canceled") || result.errorOutput.contains("cancelled") {
+            return (false, "Operation cancelled by user")
         } else {
-            return (true, "Removed \(totalDeleted) items, \(errors) failed (may need permissions)")
+            return (false, "Failed to empty trash: \(result.errorOutput)")
         }
     }
 

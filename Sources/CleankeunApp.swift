@@ -1,5 +1,5 @@
 //
-//  Cleankeun Pro — macOS System Cleaner & Optimizer
+//  Cleankeun — macOS System Cleaner & Optimizer
 //  Copyright (c) 2025-2026 Muhamad Ali Ridho. All rights reserved.
 //  Licensed under the MIT License. See LICENSE file for details.
 //
@@ -115,14 +115,14 @@ struct CleankeunSettingsView: View {
     var body: some View {
         VStack(spacing: 16) {
             CleankeunLogo(size: 64)
-            Text("Cleankeun Pro")
+            Text("Cleankeun")
                 .font(.title2.bold())
             Text("macOS System Cleaner & Optimizer")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Divider()
             VStack(alignment: .leading, spacing: 8) {
-                Label("Version 1.2.0", systemImage: "info.circle")
+                Label("Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.2.0")", systemImage: "info.circle")
                 Label("by Muhamad Ali Ridho", systemImage: "person")
                 Link(destination: URL(string: "https://github.com/madaldho/cleankeun")!) {
                     Label("GitHub Repository", systemImage: "link")

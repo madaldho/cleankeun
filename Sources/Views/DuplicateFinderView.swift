@@ -1,5 +1,5 @@
 //
-//  Cleankeun Pro — macOS System Cleaner & Optimizer
+//  Cleankeun — macOS System Cleaner & Optimizer
 //  Copyright (c) 2025-2026 Muhamad Ali Ridho. All rights reserved.
 //  Licensed under the MIT License. See LICENSE file for details.
 //
@@ -30,12 +30,23 @@ enum DuplicateFilter: String, CaseIterable, Identifiable {
     }
 }
 
+enum DuplicateSortOption: String, CaseIterable, Identifiable {
+    case wastedSpace = "Wasted Space"
+    case name = "Name"
+    case size = "File Size"
+    case count = "Count"
+
+    var id: String { rawValue }
+}
+
 struct DuplicateFinderView: View {
     @Environment(AppViewModel.self) var vm
     @State private var showConfirm = false
     @State private var selectedFilter: DuplicateFilter = .all
     @State private var previewFile: DuplicateFile? = nil
     @State private var previewGroup: DuplicateGroup? = nil
+    @State private var sortOption: DuplicateSortOption = .wastedSpace
+    @State private var showScopeSettings = false
 
     // H4: Static DateFormatter — avoid recreating inside body
     private static let previewDateFormatter: DateFormatter = {
@@ -51,7 +62,18 @@ struct DuplicateFinderView: View {
     }
 
     var filteredGroups: [DuplicateGroup] {
-        vm.duplicateGroups.filter { selectedFilter.matches(type: $0.fileType) }
+        var groups = vm.duplicateGroups.filter { selectedFilter.matches(type: $0.fileType) }
+        switch sortOption {
+        case .wastedSpace:
+            groups.sort { $0.wastedSpace > $1.wastedSpace }
+        case .name:
+            groups.sort { ($0.files.first?.fileName ?? "") < ($1.files.first?.fileName ?? "") }
+        case .size:
+            groups.sort { $0.fileSize > $1.fileSize }
+        case .count:
+            groups.sort { $0.files.count > $1.files.count }
+        }
+        return groups
     }
 
     var body: some View {
@@ -64,11 +86,11 @@ struct DuplicateFinderView: View {
                     icon: "doc.on.doc",
                     title: "No Duplicates",
                     subtitle:
-                        "Scan Downloads, Desktop, Documents, and Pictures for identical files"
+                        "Scan Downloads, Desktop, Documents, Pictures, Movies, and Music for identical files"
                 )
                 Spacer()
             } else {
-                tabNavigation
+                tabAndSortBar
                 Divider()
                 mainArea
             }
@@ -81,18 +103,80 @@ struct DuplicateFinderView: View {
 
     // MARK: - Subviews
     private var headerView: some View {
-        HStack {
-            SectionTitle(
-                title: "Duplicates", icon: "doc.on.doc.fill", gradient: Theme.primaryGradient)
-            Spacer()
-            GradientButton(
-                "Scan", icon: "magnifyingglass", gradient: Theme.primaryGradient,
-                isLoading: vm.isScanning
-            ) {
-                Task {
-                    previewFile = nil
-                    previewGroup = nil
-                    await vm.scanDuplicates()
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                SectionTitle(
+                    title: "Duplicates", icon: "doc.on.doc.fill", gradient: Theme.primaryGradient)
+                Spacer()
+
+                // Scan Scope button
+                Button {
+                    showScopeSettings.toggle()
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "folder.badge.gearshape")
+                            .font(.system(size: 12))
+                        Text("Scope")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundStyle(Theme.brand)
+                    .padding(.horizontal, 14).padding(.vertical, 7)
+                    .background(Theme.brand.opacity(0.1), in: RoundedRectangle(cornerRadius: 7))
+                    .contentShape(RoundedRectangle(cornerRadius: 7))
+                }
+                .buttonStyle(.plain)
+                .popover(isPresented: $showScopeSettings, arrowEdge: .bottom) {
+                    scanScopePopover
+                }
+
+                // Smart Select / Auto Select menu
+                if !vm.duplicateGroups.isEmpty {
+                    Menu {
+                        Button {
+                            vm.smartSelectDuplicates()
+                        } label: {
+                            Label("Smart Select (Keep First)", systemImage: "wand.and.stars")
+                        }
+                        Button {
+                            vm.deselectAllDuplicates()
+                        } label: {
+                            Label("Deselect All", systemImage: "circle")
+                        }
+                        Divider()
+                        Button {
+                            // Select all files in all groups
+                            for gi in vm.duplicateGroups.indices {
+                                for fi in vm.duplicateGroups[gi].files.indices {
+                                    vm.duplicateGroups[gi].files[fi].isSelected = true
+                                }
+                            }
+                        } label: {
+                            Label("Select All", systemImage: "checkmark.circle")
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "wand.and.stars")
+                                .font(.system(size: 12))
+                            Text("Auto Select")
+                                .font(.system(size: 12, weight: .medium))
+                        }
+                        .foregroundStyle(Theme.brand)
+                        .padding(.horizontal, 14).padding(.vertical, 7)
+                        .background(Theme.brand.opacity(0.1), in: RoundedRectangle(cornerRadius: 7))
+                        .contentShape(RoundedRectangle(cornerRadius: 7))
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                GradientButton(
+                    "Scan", icon: "magnifyingglass", gradient: Theme.primaryGradient,
+                    isLoading: vm.isScanning
+                ) {
+                    Task {
+                        previewFile = nil
+                        previewGroup = nil
+                        await vm.scanDuplicates()
+                    }
                 }
             }
         }
@@ -100,37 +184,99 @@ struct DuplicateFinderView: View {
         .padding(.bottom, -10)
     }
 
-    private var tabNavigation: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 2) {
-                ForEach(DuplicateFilter.allCases) { filter in
-                    Button {
-                        withAnimation { selectedFilter = filter }
-                    } label: {
-                        Text(filter.rawValue)
-                            .font(
-                                .system(
-                                    size: 13,
-                                    weight: selectedFilter == filter ? .semibold : .regular)
-                            )
-                            .padding(.horizontal, 18)
-                            .padding(.vertical, 10)
-                            .background(
-                                selectedFilter == filter ? Theme.brand.opacity(0.15) : Color.clear
-                            )
-                            .foregroundStyle(
-                                selectedFilter == filter
-                                    ? Theme.brand : .secondary
-                            )
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                            .contentShape(RoundedRectangle(cornerRadius: 8))
-                    }
-                    .buttonStyle(.plain)
+    @MainActor
+    private var scanScopePopover: some View {
+        @Bindable var vm = vm
+        return VStack(alignment: .leading, spacing: 12) {
+            Text("Scan Locations")
+                .font(.system(size: 13, weight: .semibold))
+
+            let home = NSHomeDirectory()
+            let folders: [(name: String, path: String, icon: String)] = [
+                ("Downloads", "\(home)/Downloads", "arrow.down.circle"),
+                ("Desktop", "\(home)/Desktop", "menubar.dock.rectangle"),
+                ("Documents", "\(home)/Documents", "doc.fill"),
+                ("Pictures", "\(home)/Pictures", "photo.fill"),
+                ("Movies", "\(home)/Movies", "film"),
+                ("Music", "\(home)/Music", "music.note"),
+            ]
+
+            ForEach(folders, id: \.path) { folder in
+                HStack(spacing: 8) {
+                    Image(systemName: folder.icon)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.brand)
+                        .frame(width: 16)
+                    Toggle(folder.name, isOn: Binding(
+                        get: { vm.duplicateScanPaths[folder.path] ?? true },
+                        set: { vm.duplicateScanPaths[folder.path] = $0 }
+                    ))
+                    .toggleStyle(.checkbox)
+                    .font(.system(size: 12))
                 }
             }
-            .padding(.horizontal, 28)
+
+            Divider()
+
+            Toggle("Include hidden files", isOn: $vm.duplicateScanHidden)
+                .toggleStyle(.checkbox)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
         }
-        .scrollIndicators(.hidden)
+        .padding(16)
+        .frame(width: 220)
+    }
+
+    private var tabAndSortBar: some View {
+        HStack {
+            // File type tabs
+            ScrollView(.horizontal) {
+                HStack(spacing: 2) {
+                    ForEach(DuplicateFilter.allCases) { filter in
+                        Button {
+                            withAnimation { selectedFilter = filter }
+                        } label: {
+                            Text(filter.rawValue)
+                                .font(
+                                    .system(
+                                        size: 13,
+                                        weight: selectedFilter == filter ? .semibold : .regular)
+                                )
+                                .padding(.horizontal, 18)
+                                .padding(.vertical, 10)
+                                .background(
+                                    selectedFilter == filter ? Theme.brand.opacity(0.15) : Color.clear
+                                )
+                                .foregroundStyle(
+                                    selectedFilter == filter
+                                        ? Theme.brand : .secondary
+                                )
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .contentShape(RoundedRectangle(cornerRadius: 8))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .scrollIndicators(.hidden)
+
+            Spacer()
+
+            // Sort picker
+            HStack(spacing: 4) {
+                Text("Sort:")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Picker("", selection: $sortOption) {
+                    ForEach(DuplicateSortOption.allCases) { opt in
+                        Text(opt.rawValue).tag(opt)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 130)
+            }
+        }
+        .padding(.horizontal, 28)
         .padding(.bottom, 12)
     }
 
@@ -145,7 +291,23 @@ struct DuplicateFinderView: View {
                             .padding(40)
                     }
 
-                    ForEach(Array(filteredGroups.enumerated()), id: \.element.id) { _, group in
+                    // Summary row
+                    if !filteredGroups.isEmpty {
+                        HStack {
+                            Text("\(filteredGroups.count) groups")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            let totalWasted = filteredGroups.reduce(0) { $0 + $1.wastedSpace }
+                            Text("Wasted: \(ByteCountFormatter.string(fromByteCount: totalWasted, countStyle: .file))")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .foregroundStyle(Theme.brand)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                    }
+
+                    ForEach(filteredGroups) { group in
                         DuplicateGroupRow(
                             group: group,
                             previewFile: $previewFile,
@@ -162,7 +324,6 @@ struct DuplicateFinderView: View {
                                 }
                             }
                         )
-                        // C3: Context menu on duplicate group
                         .contextMenu {
                             Button {
                                 if let first = group.files.first {
@@ -193,13 +354,12 @@ struct DuplicateFinderView: View {
                             Divider()
                             Button {
                                 if let gi = vm.duplicateGroups.firstIndex(where: { $0.id == group.id }) {
-                                    // Select all except the first (keep original)
                                     for fi in vm.duplicateGroups[gi].files.indices {
                                         vm.duplicateGroups[gi].files[fi].isSelected = fi > 0
                                     }
                                 }
                             } label: {
-                                Label("Select All Except First", systemImage: "checkmark.circle.badge.xmark")
+                                Label("Smart Select (Keep First)", systemImage: "wand.and.stars")
                             }
                         }
                         Divider().padding(.leading, 32)
@@ -226,27 +386,23 @@ struct DuplicateFinderView: View {
                     HStack(spacing: 12) {
                         HStack(spacing: 4) {
                             Text("\(selectedCount)").font(.system(size: 18, weight: .semibold))
-                            Text("Byte\nSelected").font(.system(size: 9)).foregroundStyle(
+                            Text("files\nselected").font(.system(size: 9)).foregroundStyle(
                                 .secondary)
                         }
                         Divider().frame(height: 20)
                         HStack(spacing: 4) {
                             Text(
-                                selectedSize > 0
-                                    ? ByteCountFormatter.string(
-                                        fromByteCount: selectedSize, countStyle: .file
-                                    ).replacingOccurrences(of: " MB", with: "")
-                                        .replacingOccurrences(of: " GB", with: "") : "0"
+                                ByteCountFormatter.string(fromByteCount: selectedSize, countStyle: .file)
                             ).font(.system(size: 18, weight: .semibold, design: .rounded))
-                                .foregroundStyle(.secondary)
-                            Text("Total\nSelected").font(.system(size: 9)).foregroundStyle(
+                                .foregroundStyle(Theme.brand)
+                            Text("to\nfree").font(.system(size: 9)).foregroundStyle(
                                 .secondary)
                         }
                     }
                 }
                 Spacer()
                 GradientButton(
-                    "Remove", icon: "trash",
+                    "Delete Permanently", icon: "trash",
                     gradient: selectedCount > 0
                         ? Theme.dangerGradient
                         : LinearGradient(colors: [.gray], startPoint: .leading, endPoint: .trailing)
@@ -256,9 +412,11 @@ struct DuplicateFinderView: View {
                 .disabled(selectedCount == 0)
             }
         }
-        .alert("Remove \(selectedCount) duplicates?", isPresented: $showConfirm) {
+        .alert("Permanently delete \(selectedCount) duplicates?", isPresented: $showConfirm) {
             Button("Cancel", role: .cancel) {}
-            Button("Move to Trash", role: .destructive) { Task { await vm.deleteDuplicates() } }
+            Button("Delete Permanently", role: .destructive) { Task { await vm.deleteDuplicates() } }
+        } message: {
+            Text("Permanently delete selected duplicates (\(ByteCountFormatter.string(fromByteCount: selectedSize, countStyle: .file)))? This cannot be undone.")
         }
     }
 
@@ -308,9 +466,13 @@ struct DuplicateFinderView: View {
                         if let attrs = try? FileManager.default.attributesOfItem(atPath: file.path),
                             let date = attrs[.modificationDate] as? Date
                         {
-                            // H4: Use static DateFormatter instead of creating inside body
                             let dateStr = Self.previewDateFormatter.string(from: date)
                             previewRow(label: "Last Modified:", value: dateStr)
+                        }
+
+                        if let group = previewGroup {
+                            previewRow(label: "Copies:", value: "\(group.files.count) files")
+                            previewRow(label: "Wasted:", value: group.formattedWastedSpace)
                         }
                     }
                     .padding(.horizontal, 20)
@@ -387,14 +549,22 @@ struct DuplicateGroupRow: View {
                             .lineLimit(1)
                             .truncationMode(.middle)
 
-                        Text("\(group.formattedSize)")
-                            .font(.system(size: 10))
-                            .foregroundStyle(.secondary)
+                        HStack(spacing: 6) {
+                            Text(group.formattedSize)
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
+                            Text("•")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.quaternary)
+                            Text("Wasted: \(group.formattedWastedSpace)")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(Theme.warning)
+                        }
                     }
                     Spacer()
 
                     let selectedCount = group.files.filter({ $0.isSelected }).count
-                    Text("\(selectedCount) | \(group.files.count)")
+                    Text("\(selectedCount)/\(group.files.count)")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.secondary)
                 }
@@ -460,7 +630,6 @@ struct DuplicateGroupRow: View {
                         }
                         .buttonStyle(.plain)
                     }
-                    // C3: Context menu on individual duplicate file
                     .contextMenu {
                         Button {
                             NSWorkspace.shared.selectFile(file.path, inFileViewerRootedAtPath: "")

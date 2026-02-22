@@ -1,5 +1,5 @@
 //
-//  Cleankeun Pro — macOS System Cleaner & Optimizer
+//  Cleankeun — macOS System Cleaner & Optimizer
 //  Copyright (c) 2025-2026 Muhamad Ali Ridho. All rights reserved.
 //  Licensed under the MIT License. See LICENSE file for details.
 //
@@ -57,6 +57,23 @@ struct AppUninstallerView: View {
                     .buttonStyle(.plain)
                 }
 
+                // Sort picker
+                HStack(spacing: 4) {
+                    Text("Sort:")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    Picker("", selection: Binding(
+                        get: { vm.appSortBy },
+                        set: { vm.appSortBy = $0 }
+                    )) {
+                        ForEach(AppSortOption.allCases) { opt in
+                            Text(opt.rawValue).tag(opt)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 160)
+                }
+
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(.secondary)
@@ -68,6 +85,7 @@ struct AppUninstallerView: View {
                 .frame(width: 200)
                 .padding(8)
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                .glassEffect(.regular, in: .rect(cornerRadius: 8))
 
                 GradientButton(
                     "Scan Apps", icon: "magnifyingglass", gradient: Theme.primaryGradient,
@@ -79,46 +97,68 @@ struct AppUninstallerView: View {
             .padding(28)
             .padding(.bottom, -10)
 
-            if vm.installedApps.isEmpty && !vm.isScanning {
-                EmptyState(
-                    icon: "app.dashed", title: "No Apps Scanned",
-                    subtitle:
-                        "Scan to view all installed applications and remove them completely with leftover files",
-                    gradient: Theme.dangerGradient)
-            } else {
-                HStack(spacing: 0) {
-                    // Left Sidebar Filters
-                    VStack(alignment: .leading, spacing: 20) {
-                        FilterSection(
-                            title: "Sources", items: AppSource.allCases, selected: $selectedSource,
-                            apps: vm.filteredApps
-                        ) { $0.source == $1 }
-                        FilterSection(
-                            title: "Vendors", items: AppVendor.allCases, selected: $selectedVendor,
-                            apps: vm.filteredApps
-                        ) { $0.vendor == $1 }
-                        Spacer()
-                    }
-                    .frame(width: 160)
-                    .padding(20)
+            // Always show sidebar + main layout (consistent before/after scan)
+            HStack(spacing: 0) {
+                // Left Sidebar Filters
+                VStack(alignment: .leading, spacing: 20) {
+                    FilterSection(
+                        title: "Sources", items: AppSource.allCases, selected: $selectedSource,
+                        apps: vm.filteredApps
+                    ) { $0.source == $1 }
+                    FilterSection(
+                        title: "Vendors", items: AppVendor.allCases, selected: $selectedVendor,
+                        apps: vm.filteredApps
+                    ) { $0.vendor == $1 }
+                    Spacer()
+                }
+                .frame(width: 160)
+                .padding(20)
 
-                    Divider()
+                Divider()
 
-                    // Main App List
-                    ScrollView {
-                        VStack(spacing: 12) {
+                // Main App List
+                ScrollView {
+                    VStack(spacing: 12) {
+                        if vm.installedApps.isEmpty && !vm.isScanning {
+                            // Empty state within the main area (layout stays consistent)
+                            VStack(spacing: 16) {
+                                Spacer().frame(height: 40)
+                                EmptyState(
+                                    icon: "app.dashed", title: "No Apps Scanned",
+                                    subtitle:
+                                        "Scan to view all installed applications and remove them completely with leftover files",
+                                    gradient: Theme.dangerGradient)
+                                Spacer()
+                            }
+                        } else if vm.isScanning && vm.installedApps.isEmpty {
+                            VStack(spacing: 16) {
+                                Spacer().frame(height: 40)
+                                ProgressView()
+                                    .scaleEffect(1.2)
+                                Text("Scanning applications...")
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                            }
+                            .frame(maxWidth: .infinity)
+                        } else {
                             HStack {
                                 Text("\(filteredApps.count) applications")
                                     .font(.system(size: 12, weight: .medium)).foregroundStyle(
                                         .secondary)
                                 Spacer()
+                                if !filteredApps.isEmpty {
+                                    let totalSize = filteredApps.reduce(0) { $0 + $1.totalSize }
+                                    Text("Total: \(ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file))")
+                                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                        .foregroundStyle(Theme.brand)
+                                }
                             }
 
                             ForEach(filteredApps) { app in
                                 AppCard(
                                     app: Binding(
                                         get: {
-                                            // Always look up the latest version from the source of truth
                                             vm.installedApps.first(where: { $0.id == app.id }) ?? app
                                         },
                                         set: { newValue in
@@ -150,10 +190,10 @@ struct AppUninstallerView: View {
                                 }
                             }
                         }
-                        .padding(20)
                     }
-                    .scrollIndicators(.hidden)
+                    .padding(20)
                 }
+                .scrollIndicators(.hidden)
             }
 
             // Bottom Action Bar when items selected
@@ -204,11 +244,11 @@ struct AppUninstallerView: View {
         } message: {
             if let app = appToUninstall {
                 Text(
-                    "This will remove \(app.name) and \(app.relatedFiles.count) related files (\(app.formattedTotalSize)) to Trash."
+                    "This will remove \(app.name) and \(app.relatedFiles.count) related files (\(app.formattedTotalSize))."
                 )
             } else {
                 Text(
-                    "This will remove \(selectedCount) selected applications and their related files (\(ByteCountFormatter.string(fromByteCount: totalSelectedSize, countStyle: .file))) to Trash."
+                    "This will remove \(selectedCount) selected applications and their related files (\(ByteCountFormatter.string(fromByteCount: totalSelectedSize, countStyle: .file)))."
                 )
             }
         }
@@ -358,6 +398,7 @@ struct AppCard: View {
         .background {
             RoundedRectangle(cornerRadius: 12)
                 .fill(.regularMaterial)
+                .glassEffect(.regular, in: .rect(cornerRadius: 12))
                 .shadow(
                     color: .primary.opacity(isHovered ? 0.08 : 0.04), radius: isHovered ? 8 : 4, y: 2
                 )

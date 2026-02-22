@@ -1,5 +1,5 @@
 //
-//  Cleankeun Pro — macOS System Cleaner & Optimizer
+//  Cleankeun — macOS System Cleaner & Optimizer
 //  Copyright (c) 2025-2026 Muhamad Ali Ridho. All rights reserved.
 //  Licensed under the MIT License. See LICENSE file for details.
 //
@@ -48,7 +48,7 @@ class LargeFileScannerService {
         var deleted = 0; var freedSpace: Int64 = 0; var errors: [String] = []
         for file in files where file.isSelected {
             do {
-                try fileManager.trashItem(at: URL(fileURLWithPath: file.path), resultingItemURL: nil)
+                try fileManager.removeItem(atPath: file.path)
                 deleted += 1; freedSpace += file.size
             } catch { errors.append("\(file.fileName): \(error.localizedDescription)") }
         }
