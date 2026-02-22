@@ -500,23 +500,50 @@ struct DiskUsageView: View {
 
     // MARK: - Empty View
     private var emptyView: some View {
-        VStack(spacing: 16) {
-            Spacer()
-            Image(systemName: "chart.pie")
-                .font(.system(size: 48))
-                .foregroundStyle(.quaternary)
-            Text("Disk Space Analyzer")
-                .font(.system(size: 20, weight: .bold))
-            Text("Visualize your disk space usage, find large files and folders, and free up space on your Mac.")
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 380)
-            GradientButton("Start Analysis", icon: "magnifyingglass", gradient: Theme.primaryGradient, isLoading: vm.isScanning) {
-                Task { await vm.analyzeDiskUsage() }
+        ScrollView {
+            VStack(spacing: 24) {
+                Spacer().frame(height: 12)
+
+                Image(systemName: "chart.pie")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.quaternary)
+                Text("Disk Space Analyzer")
+                    .font(.system(size: 20, weight: .bold))
+                Text("Visualize your disk space usage, find large files and folders, and free up space on your Mac.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 380)
+
+                // Volume picker cards
+                if !vm.availableVolumes.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Select a volume to analyze")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.secondary)
+
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 260, maximum: 360), spacing: 12)], spacing: 12) {
+                            ForEach(vm.availableVolumes) { volume in
+                                VolumeCard(volume: volume, isScanning: vm.isScanning) {
+                                    vm.currentDiskPath = volume.mountPoint
+                                    navigationHistory = []
+                                    Task { await vm.analyzeDiskUsage() }
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 40)
+                } else {
+                    GradientButton("Start Analysis", icon: "magnifyingglass", gradient: Theme.primaryGradient, isLoading: vm.isScanning) {
+                        Task { await vm.analyzeDiskUsage() }
+                    }
+                }
+
+                Spacer()
             }
-            Spacer()
+            .frame(maxWidth: .infinity)
         }
+        .onAppear { vm.loadVolumes() }
     }
 
     // MARK: - Left Tree Panel
@@ -570,6 +597,7 @@ struct DiskUsageView: View {
                             onSelect: { selectedItemId = item.id },
                             onNavigate: {
                                 if item.isDirectory {
+                                    selectedItemId = nil
                                     navigationHistory.append(vm.currentDiskPath)
                                     Task { await vm.navigateDiskUsage(to: item.path) }
                                 }
@@ -623,6 +651,7 @@ struct DiskUsageView: View {
                                 isHovered: hoveredTreemapId == tr.id || selectedItemId == tr.id,
                                 onTap: {
                                     if tr.item.isDirectory {
+                                        selectedItemId = nil
                                         navigationHistory.append(vm.currentDiskPath)
                                         Task { await vm.navigateDiskUsage(to: tr.item.path) }
                                     } else {
@@ -830,7 +859,11 @@ private struct DiskTreeRow: View {
 
     var body: some View {
         Button {
-            onSelect()
+            if item.isDirectory {
+                onNavigate()
+            } else {
+                onSelect()
+            }
         } label: {
             HStack(spacing: 8) {
                 // Real macOS file/folder icon from Finder
@@ -874,14 +907,10 @@ private struct DiskTreeRow: View {
 
                 // Navigate arrow for directories
                 if item.isDirectory {
-                    Button(action: onNavigate) {
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(Theme.brand.opacity(isHovered ? 1 : 0.5))
-                            .frame(width: 16, height: 16)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Theme.brand.opacity(isHovered ? 1 : 0.5))
+                        .frame(width: 16, height: 16)
                 } else {
                     Spacer().frame(width: 16)
                 }
@@ -908,6 +937,82 @@ private struct DiskTreeRow: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Volume Picker Card
+
+private struct VolumeCard: View {
+    let volume: VolumeInfo
+    let isScanning: Bool
+    let onAnalyze: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: onAnalyze) {
+            HStack(spacing: 14) {
+                // Volume icon from NSWorkspace
+                Image(nsImage: volume.icon)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 40, height: 40)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(volume.name)
+                        .font(.system(size: 14, weight: .semibold))
+                        .lineLimit(1)
+
+                    // Usage bar
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(Color.primary.opacity(0.08))
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(usageColor)
+                                .frame(width: max(2, geo.size.width * CGFloat(volume.usagePercent)))
+                        }
+                    }
+                    .frame(height: 8)
+
+                    HStack {
+                        Text("\(formattedSize(volume.usedSize)) used")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text("\(formattedSize(volume.freeSize)) free")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Image(systemName: "arrow.right.circle.fill")
+                    .font(.system(size: 18))
+                    .foregroundStyle(Theme.brand.opacity(isHovered ? 1 : 0.5))
+            }
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 12).fill(.regularMaterial)
+                    .glassEffect(.regular, in: .rect(cornerRadius: 12))
+                    .shadow(color: .primary.opacity(isHovered ? 0.08 : 0.03), radius: isHovered ? 8 : 3, y: 2)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .disabled(isScanning)
+    }
+
+    private var usageColor: LinearGradient {
+        if volume.usagePercent > 0.9 {
+            return LinearGradient(colors: [.red, .orange], startPoint: .leading, endPoint: .trailing)
+        } else if volume.usagePercent > 0.75 {
+            return LinearGradient(colors: [.orange, .yellow], startPoint: .leading, endPoint: .trailing)
+        }
+        return Theme.primaryGradient
+    }
+
+    private func formattedSize(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
 }
 

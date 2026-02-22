@@ -73,6 +73,7 @@ class AppViewModel {
     // Disk Usage
     var diskUsageItems: [DiskUsageItem] = []
     var currentDiskPath: String = NSHomeDirectory()
+    var availableVolumes: [VolumeInfo] = []
 
     // Shredder
     var shredItems: [ShredItem] = []
@@ -644,6 +645,10 @@ class AppViewModel {
     }
 
     // MARK: - Disk Usage
+    func loadVolumes() {
+        availableVolumes = DiskUsageService.shared.getAvailableVolumes()
+    }
+
     func analyzeDiskUsage() async {
         isScanning = true; statusMessage = "Analyzing disk..."
         diskUsageItems = await DiskUsageService.shared.analyzeDiskUsage(path: currentDiskPath)

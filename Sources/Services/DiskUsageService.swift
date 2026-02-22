@@ -4,11 +4,90 @@
 //  Licensed under the MIT License. See LICENSE file for details.
 //
 
+import AppKit
 import Foundation
+
+/// Represents a mountable volume for the disk picker
+struct VolumeInfo: Identifiable {
+    let id = UUID()
+    let name: String
+    let mountPoint: String
+    let totalSize: Int64
+    let freeSize: Int64
+    let icon: NSImage
+
+    var usedSize: Int64 { totalSize - freeSize }
+    var usagePercent: Double {
+        guard totalSize > 0 else { return 0 }
+        return Double(usedSize) / Double(totalSize)
+    }
+}
 
 class DiskUsageService {
     static let shared = DiskUsageService()
     private let fileManager = FileManager.default
+
+    // MARK: - Volume Discovery
+
+    /// Returns user-relevant mounted volumes (skips system/internal volumes)
+    func getAvailableVolumes() -> [VolumeInfo] {
+        var volumes: [VolumeInfo] = []
+
+        // Always include the boot volume (Macintosh HD / Data)
+        let home = NSHomeDirectory()
+        if let attrs = try? fileManager.attributesOfFileSystem(forPath: home) {
+            let total = attrs[.systemSize] as? Int64 ?? 0
+            let free = attrs[.systemFreeSize] as? Int64 ?? 0
+            let icon = NSWorkspace.shared.icon(forFile: "/")
+            volumes.append(VolumeInfo(
+                name: "Macintosh HD",
+                mountPoint: home,
+                totalSize: total,
+                freeSize: free,
+                icon: icon
+            ))
+        }
+
+        // Scan /Volumes for external/additional volumes
+        let volumesPath = "/Volumes"
+        if let entries = try? fileManager.contentsOfDirectory(atPath: volumesPath) {
+            for entry in entries {
+                // Skip "Macintosh HD" symlink and hidden volumes
+                if entry == "Macintosh HD" || entry.hasPrefix(".") { continue }
+
+                let mountPoint = (volumesPath as NSString).appendingPathComponent(entry)
+
+                // Skip if it's a symlink (macOS creates symlinks in /Volumes for system volumes)
+                var isDir: ObjCBool = false
+                guard fileManager.fileExists(atPath: mountPoint, isDirectory: &isDir),
+                      isDir.boolValue else { continue }
+
+                // Check if it's a symlink
+                if let _ = try? fileManager.destinationOfSymbolicLink(atPath: mountPoint) {
+                    continue  // Skip symlinks
+                }
+
+                if let attrs = try? fileManager.attributesOfFileSystem(forPath: mountPoint) {
+                    let total = attrs[.systemSize] as? Int64 ?? 0
+                    let free = attrs[.systemFreeSize] as? Int64 ?? 0
+
+                    // Skip tiny volumes (< 100MB — likely system partitions)
+                    guard total > 100 * 1024 * 1024 else { continue }
+
+                    let icon = NSWorkspace.shared.icon(forFile: mountPoint)
+                    volumes.append(VolumeInfo(
+                        name: entry,
+                        mountPoint: mountPoint,
+                        totalSize: total,
+                        freeSize: free,
+                        icon: icon
+                    ))
+                }
+            }
+        }
+
+        return volumes
+    }
 
     func analyzeDiskUsage(path: String? = nil, maxDepth: Int = 2) async -> [DiskUsageItem] {
         let targetPath = path ?? NSHomeDirectory()
