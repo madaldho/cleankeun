@@ -7,7 +7,7 @@
 import SwiftUI
 
 struct MenuBarView: View {
-    @EnvironmentObject var vm: AppViewModel
+    @Environment(AppViewModel.self) var vm
 
     var body: some View {
         ZStack {
@@ -25,11 +25,11 @@ struct MenuBarView: View {
                     Spacer()
                     Text("Pro")
                         .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.white)
+                        .foregroundStyle(.white)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)
                         .background(Theme.primaryGradient)
-                        .cornerRadius(6)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
@@ -66,13 +66,13 @@ struct MenuBarView: View {
                                         width: 28, height: 28)
                                     Image(systemName: "network")
                                         .font(.system(size: 13))
-                                        .foregroundColor(Theme.brand)
+                                        .foregroundStyle(Theme.brand)
                                 }
                                 Spacer()
                             }
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack(spacing: 4) {
-                                    Image(systemName: "arrow.down").foregroundColor(Theme.success).font(
+                                    Image(systemName: "arrow.down").foregroundStyle(Theme.success).font(
                                         .system(size: 8, weight: .bold))
                                     Text(vm.networkInfo?.formattedDownload ?? "0 B/s")
                                         .font(
@@ -81,7 +81,7 @@ struct MenuBarView: View {
                                         .foregroundStyle(.primary)
                                 }
                                 HStack(spacing: 4) {
-                                    Image(systemName: "arrow.up").foregroundColor(Theme.warning).font(
+                                    Image(systemName: "arrow.up").foregroundStyle(Theme.warning).font(
                                         .system(size: 8, weight: .bold))
                                     Text(vm.networkInfo?.formattedUpload ?? "0 B/s")
                                         .font(
@@ -138,7 +138,7 @@ struct MenuBarView: View {
                             .padding(.vertical, 6)
                             .padding(.horizontal, 12)
                             .background(.fill.quaternary)
-                            .cornerRadius(6)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
                     }
                     .buttonStyle(.plain)
 
@@ -147,7 +147,7 @@ struct MenuBarView: View {
                     Button(action: { NSApplication.shared.terminate(nil) }) {
                         Image(systemName: "power")
                             .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(.white)
+                            .foregroundStyle(.white)
                             .padding(6)
                             .background(Theme.danger.opacity(0.8))
                             .clipShape(Circle())
@@ -175,7 +175,8 @@ struct MenuBarView: View {
 
         // Ensure the app shows as a regular app (Dock icon, can receive focus)
         NSApplication.shared.setActivationPolicy(.regular)
-        NSApplication.shared.activate(ignoringOtherApps: true)
+        // L2: Use non-deprecated activate()
+        NSApplication.shared.activate()
 
         // Find the main window — exclude menu bar panels and sheets
         // Main WindowGroup window is the one that canBecomeMain
@@ -187,7 +188,8 @@ struct MenuBarView: View {
             // If the window was closed, open a new one via the WindowGroup
             // On macOS 26+, we can use the environment openWindow action,
             // but for now just bring the app to front — SwiftUI will re-create the window.
-            NSApplication.shared.activate(ignoringOtherApps: true)
+            // L2: Use non-deprecated activate()
+            NSApplication.shared.activate()
         }
     }
 }
@@ -207,7 +209,7 @@ struct MenuBarStatCard: View {
                     Circle().fill(color.opacity(0.2)).frame(width: 28, height: 28)
                     Image(systemName: icon)
                         .font(.system(size: 14))
-                        .foregroundColor(color)
+                        .foregroundStyle(color)
                 }
                 Spacer()
                 Text(value)
@@ -256,7 +258,7 @@ struct MenuBarAction: View {
                     Circle().fill(color.opacity(0.2)).frame(width: 28, height: 28)
                     Image(systemName: icon)
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(color)
+                        .foregroundStyle(color)
                 }
 
                 Text(title)

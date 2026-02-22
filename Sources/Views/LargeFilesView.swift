@@ -7,7 +7,7 @@
 import SwiftUI
 
 struct LargeFilesView: View {
-    @EnvironmentObject var vm: AppViewModel
+    @Environment(AppViewModel.self) var vm
     @State private var showConfirm = false
 
     var selectedCount: Int { vm.largeFiles.filter(\.isSelected).count }
@@ -15,7 +15,7 @@ struct LargeFilesView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView(showsIndicators: false) {
+            ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     HStack {
                         SectionTitle(
@@ -75,11 +75,26 @@ struct LargeFilesView: View {
                                     vm.largeFiles[idx].isSelected.toggle()
                                 }
                             }
+                            .contextMenu {
+                                Button("Reveal in Finder") {
+                                    NSWorkspace.shared.selectFile(file.path, inFileViewerRootedAtPath: "")
+                                }
+                                Button("Open") {
+                                    NSWorkspace.shared.open(URL(fileURLWithPath: file.path))
+                                }
+                                Divider()
+                                Button(file.isSelected ? "Deselect" : "Select") {
+                                    if let idx = vm.largeFiles.firstIndex(where: { $0.id == file.id }) {
+                                        vm.largeFiles[idx].isSelected.toggle()
+                                    }
+                                }
+                            }
                         }
                     }
                 }
                 .padding(28)
             }
+            .scrollIndicators(.hidden)
 
             if !vm.largeFiles.isEmpty {
                 BottomBar {
@@ -139,9 +154,9 @@ struct FilterChip: View {
                 .background(
                     isActive
                         ? AnyShapeStyle(Theme.primaryGradient)
-                        : AnyShapeStyle(Color.gray.opacity(0.12))
+                        : AnyShapeStyle(.secondary.opacity(0.12))
                 )
-                .cornerRadius(6)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
                 .contentShape(RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
@@ -158,7 +173,7 @@ struct LargeFileCard: View {
             Button(action: onToggle) {
                 Image(systemName: file.isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 16))
-                    .foregroundStyle(file.isSelected ? Theme.brand : Color.gray.opacity(0.35))
+                    .foregroundStyle(file.isSelected ? Theme.brand : .secondary.opacity(0.35))
                     .frame(width: 28, height: 28)
                     .contentShape(Rectangle())
             }
@@ -204,7 +219,7 @@ struct LargeFileCard: View {
         .background {
             RoundedRectangle(cornerRadius: 12).fill(.regularMaterial)
                 .shadow(
-                    color: .black.opacity(isHovered ? 0.07 : 0.04), radius: isHovered ? 6 : 3, y: 2
+                    color: .primary.opacity(isHovered ? 0.07 : 0.04), radius: isHovered ? 6 : 3, y: 2
                 )
         }
         .onHover { isHovered = $0 }

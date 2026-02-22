@@ -31,11 +31,19 @@ enum DuplicateFilter: String, CaseIterable, Identifiable {
 }
 
 struct DuplicateFinderView: View {
-    @EnvironmentObject var vm: AppViewModel
+    @Environment(AppViewModel.self) var vm
     @State private var showConfirm = false
     @State private var selectedFilter: DuplicateFilter = .all
     @State private var previewFile: DuplicateFile? = nil
     @State private var previewGroup: DuplicateGroup? = nil
+
+    // H4: Static DateFormatter — avoid recreating inside body
+    private static let previewDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .full
+        formatter.timeStyle = .short
+        return formatter
+    }()
 
     var selectedCount: Int { vm.duplicateGroups.flatMap(\.files).filter(\.isSelected).count }
     var selectedSize: Int64 {
@@ -56,8 +64,7 @@ struct DuplicateFinderView: View {
                     icon: "doc.on.doc",
                     title: "No Duplicates",
                     subtitle:
-                        "Scan Downloads, Desktop, Documents, and Pictures for identical files",
-                    gradient: Theme.primaryGradient
+                        "Scan Downloads, Desktop, Documents, and Pictures for identical files"
                 )
                 Spacer()
             } else {
@@ -94,7 +101,7 @@ struct DuplicateFinderView: View {
     }
 
     private var tabNavigation: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        ScrollView(.horizontal) {
             HStack(spacing: 2) {
                 ForEach(DuplicateFilter.allCases) { filter in
                     Button {
@@ -115,7 +122,7 @@ struct DuplicateFinderView: View {
                                 selectedFilter == filter
                                     ? Theme.brand : .secondary
                             )
-                            .cornerRadius(8)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
                             .contentShape(RoundedRectangle(cornerRadius: 8))
                     }
                     .buttonStyle(.plain)
@@ -123,13 +130,14 @@ struct DuplicateFinderView: View {
             }
             .padding(.horizontal, 28)
         }
+        .scrollIndicators(.hidden)
         .padding(.bottom, 12)
     }
 
     private var mainArea: some View {
         HStack(spacing: 0) {
             // Left List
-            ScrollView(showsIndicators: false) {
+            ScrollView {
                 VStack(spacing: 0) {
                     if filteredGroups.isEmpty {
                         Text("No items match this category.")
@@ -154,11 +162,52 @@ struct DuplicateFinderView: View {
                                 }
                             }
                         )
+                        // C3: Context menu on duplicate group
+                        .contextMenu {
+                            Button {
+                                if let first = group.files.first {
+                                    NSWorkspace.shared.selectFile(first.path, inFileViewerRootedAtPath: "")
+                                }
+                            } label: {
+                                Label("Reveal in Finder", systemImage: "folder")
+                            }
+                            Divider()
+                            Button {
+                                if let gi = vm.duplicateGroups.firstIndex(where: { $0.id == group.id }) {
+                                    for fi in vm.duplicateGroups[gi].files.indices {
+                                        vm.duplicateGroups[gi].files[fi].isSelected = true
+                                    }
+                                }
+                            } label: {
+                                Label("Select All in Group", systemImage: "checkmark.circle")
+                            }
+                            Button {
+                                if let gi = vm.duplicateGroups.firstIndex(where: { $0.id == group.id }) {
+                                    for fi in vm.duplicateGroups[gi].files.indices {
+                                        vm.duplicateGroups[gi].files[fi].isSelected = false
+                                    }
+                                }
+                            } label: {
+                                Label("Deselect All in Group", systemImage: "circle")
+                            }
+                            Divider()
+                            Button {
+                                if let gi = vm.duplicateGroups.firstIndex(where: { $0.id == group.id }) {
+                                    // Select all except the first (keep original)
+                                    for fi in vm.duplicateGroups[gi].files.indices {
+                                        vm.duplicateGroups[gi].files[fi].isSelected = fi > 0
+                                    }
+                                }
+                            } label: {
+                                Label("Select All Except First", systemImage: "checkmark.circle.badge.xmark")
+                            }
+                        }
                         Divider().padding(.leading, 32)
                     }
                 }
                 .padding(.vertical, 10)
             }
+            .scrollIndicators(.hidden)
             .frame(maxWidth: .infinity)
 
             Divider()
@@ -259,12 +308,8 @@ struct DuplicateFinderView: View {
                         if let attrs = try? FileManager.default.attributesOfItem(atPath: file.path),
                             let date = attrs[.modificationDate] as? Date
                         {
-                            let dateStr: String = {
-                                let formatter = DateFormatter()
-                                formatter.dateStyle = .full
-                                formatter.timeStyle = .short
-                                return formatter.string(from: date)
-                            }()
+                            // H4: Use static DateFormatter instead of creating inside body
+                            let dateStr = Self.previewDateFormatter.string(from: date)
                             previewRow(label: "Last Modified:", value: dateStr)
                         }
                     }
@@ -332,7 +377,7 @@ struct DuplicateGroupRow: View {
                         RoundedRectangle(cornerRadius: 6).fill(typeColor.opacity(0.12))
                             .frame(width: 24, height: 24)
                         Image(systemName: group.fileType.icon)
-                            .font(.system(size: 10)).foregroundColor(typeColor)
+                            .font(.system(size: 10)).foregroundStyle(typeColor)
                     }
 
                     VStack(alignment: .leading, spacing: 2) {
@@ -368,10 +413,10 @@ struct DuplicateGroupRow: View {
                             onToggle(file.id)
                         } label: {
                             Image(systemName: file.isSelected ? "checkmark.square.fill" : "square")
-                                .foregroundColor(
+                                .foregroundStyle(
                                     file.isSelected
                                         ? Theme.brand
-                                        : .gray.opacity(0.4)
+                                        : .secondary.opacity(0.4)
                                 )
                                 .font(.system(size: 14))
                                 .frame(width: 28, height: 28)
@@ -410,10 +455,23 @@ struct DuplicateGroupRow: View {
                                 previewFile?.id == file.id
                                     ? Color.primary.opacity(0.06) : Color.clear
                             )
-                            .cornerRadius(6)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                    }
+                    // C3: Context menu on individual duplicate file
+                    .contextMenu {
+                        Button {
+                            NSWorkspace.shared.selectFile(file.path, inFileViewerRootedAtPath: "")
+                        } label: {
+                            Label("Reveal in Finder", systemImage: "folder")
+                        }
+                        Button {
+                            onToggle(file.id)
+                        } label: {
+                            Label(file.isSelected ? "Deselect" : "Select", systemImage: file.isSelected ? "circle" : "checkmark.circle")
+                        }
                     }
                     .padding(.leading, 42)
                     .padding(.trailing, 16)

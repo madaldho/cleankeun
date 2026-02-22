@@ -3,7 +3,7 @@ set -e
 
 APP_NAME="Cleankeun"
 BUNDLE_ID="com.cleankeun.pro"
-VERSION="1.1.5"
+VERSION="1.2.0"
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="$PROJECT_DIR/.build/release"
@@ -65,7 +65,7 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << PLIST
     <key>CFBundleShortVersionString</key>
     <string>${VERSION}</string>
     <key>CFBundleVersion</key>
-    <string>6</string>
+    <string>7</string>
     <key>LSMinimumSystemVersion</key>
     <string>26.0</string>
     <key>LSApplicationCategoryType</key>
@@ -325,7 +325,7 @@ let verAttrs: [NSAttributedString.Key: Any] = [
     .font: NSFont.monospacedSystemFont(ofSize: 9, weight: .medium),
     .foregroundColor: NSColor(calibratedWhite: 1.0, alpha: 0.25)
 ]
-let verText = NSAttributedString(string: "v1.1.5", attributes: verAttrs)
+let verText = NSAttributedString(string: "v1.2.0", attributes: verAttrs)
 verText.draw(at: NSPoint(x: W - 50, y: 10))
 
 ctx.flushGraphics()

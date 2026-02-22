@@ -7,7 +7,7 @@
 import SwiftUI
 
 struct PerformanceView: View {
-    @EnvironmentObject var vm: AppViewModel
+    @Environment(AppViewModel.self) var vm
     @State private var hasStarted = false
 
     var body: some View {
@@ -33,7 +33,7 @@ struct PerformanceView: View {
     }
 
     private var performanceContent: some View {
-        ScrollView(showsIndicators: false) {
+        ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 HStack {
                     SectionTitle(title: "Performance", icon: "cpu", gradient: Theme.primaryGradient)
@@ -100,7 +100,7 @@ struct PerformanceView: View {
                                                         / CGFloat(mem.total))
                                             Rectangle().fill(Theme.success.opacity(0.2))
                                         }
-                                        .cornerRadius(5)
+                                        .clipShape(RoundedRectangle(cornerRadius: 5))
                                     }
                                     .frame(height: 12)
 
@@ -179,7 +179,7 @@ struct PerformanceView: View {
                                 Circle().fill(Theme.success.opacity(0.12)).frame(
                                     width: 36, height: 36)
                                 Image(systemName: "arrow.down.circle.fill")
-                                    .font(.system(size: 16)).foregroundColor(Theme.success)
+                                    .font(.system(size: 16)).foregroundStyle(Theme.success)
                             }
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Download").font(.system(size: 10)).foregroundStyle(
@@ -193,7 +193,7 @@ struct PerformanceView: View {
                                 Circle().fill(Theme.warning.opacity(0.12)).frame(
                                     width: 36, height: 36)
                                 Image(systemName: "arrow.up.circle.fill")
-                                    .font(.system(size: 16)).foregroundColor(Theme.warning)
+                                    .font(.system(size: 16)).foregroundStyle(Theme.warning)
                             }
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Upload").font(.system(size: 10)).foregroundStyle(.secondary)
@@ -207,6 +207,7 @@ struct PerformanceView: View {
             }
             .padding(28)
         }
+        .scrollIndicators(.hidden)
     }
 
     func fmt(_ val: UInt64) -> String {
@@ -221,14 +222,14 @@ struct MemChip: View {
 
     var body: some View {
         VStack(spacing: 4) {
-            Text(value).font(.system(size: 13, weight: .bold, design: .rounded)).foregroundColor(
+            Text(value).font(.system(size: 13, weight: .bold, design: .rounded)).foregroundStyle(
                 color)
             Text(label).font(.system(size: 9)).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
         .padding(8)
         .background(color.opacity(0.08))
-        .cornerRadius(8)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
 

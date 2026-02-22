@@ -7,13 +7,13 @@
 import SwiftUI
 
 struct JunkCleanerView: View {
-    @EnvironmentObject var vm: AppViewModel
+    @Environment(AppViewModel.self) var vm
     @State private var showConfirm = false
 
     var body: some View {
         ZStack {
             VStack(spacing: 0) {
-                ScrollView(showsIndicators: false) {
+                ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
                         HStack {
                             SectionTitle(
@@ -92,6 +92,7 @@ struct JunkCleanerView: View {
                     }
                     .padding(28)
                 }
+                .scrollIndicators(.hidden)
 
                 if !vm.junkItems.isEmpty {
                     BottomBar {
@@ -153,7 +154,7 @@ struct CleaningProgressOverlay: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.4)
+            Color.primary.opacity(0.4)
                 .ignoresSafeArea()
 
             VStack(spacing: 24) {
@@ -185,7 +186,7 @@ struct CleaningProgressOverlay: View {
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
                             RoundedRectangle(cornerRadius: 6)
-                                .fill(Color.white.opacity(0.1))
+                                .fill(Color.primary.opacity(0.1))
                             RoundedRectangle(cornerRadius: 6)
                                 .fill(Theme.primaryGradient)
                                 .frame(width: geo.size.width * animatedProgress)
@@ -215,7 +216,7 @@ struct CleaningProgressOverlay: View {
             .background(
                 RoundedRectangle(cornerRadius: 20)
                     .fill(.ultraThickMaterial)
-                    .shadow(color: .black.opacity(0.3), radius: 30, y: 10)
+                    .shadow(color: .primary.opacity(0.3), radius: 30, y: 10)
             )
         }
         .onAppear {
@@ -334,7 +335,7 @@ struct JunkCategoryRow: View {
                                         ? "checkmark.circle.fill" : "circle"
                                 )
                                 .foregroundStyle(
-                                    item.isSelected ? Theme.brand : Color.gray.opacity(0.4))
+                                    item.isSelected ? Theme.brand : .secondary.opacity(0.4))
                                 .font(.system(size: 14))
 
                                 Image(nsImage: NSWorkspace.shared.icon(forFile: item.path))
@@ -362,6 +363,14 @@ struct JunkCategoryRow: View {
                             )
                         }
                         .buttonStyle(.plain)
+                        .contextMenu {
+                            Button("Reveal in Finder") {
+                                NSWorkspace.shared.selectFile(item.path, inFileViewerRootedAtPath: "")
+                            }
+                            Button(item.isSelected ? "Deselect" : "Select") {
+                                onToggleItem(item)
+                            }
+                        }
                     }
                     if items.count > 50 {
                         Text("+ \(items.count - 50) more files")
@@ -374,7 +383,7 @@ struct JunkCategoryRow: View {
         }
         .background {
             RoundedRectangle(cornerRadius: 12).fill(.regularMaterial).shadow(
-                color: .black.opacity(isHovered ? 0.08 : 0.05), radius: isHovered ? 8 : 6, y: 2)
+                color: .primary.opacity(isHovered ? 0.08 : 0.05), radius: isHovered ? 8 : 6, y: 2)
         }
         .animation(.easeInOut(duration: 0.15), value: isHovered)
         .onHover { isHovered = $0 }

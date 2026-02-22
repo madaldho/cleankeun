@@ -21,7 +21,7 @@ enum StartupCategory: String, CaseIterable, Identifiable {
 }
 
 struct StartupManagerView: View {
-    @EnvironmentObject var vm: AppViewModel
+    @Environment(AppViewModel.self) var vm
     @State private var selectedCategory: StartupCategory = .loginItems
     @State private var itemToToggle: Int? = nil
     @State private var showWarning = false
@@ -45,8 +45,7 @@ struct StartupManagerView: View {
                 Spacer()
                 EmptyState(
                     icon: "power", title: "No Startup Items",
-                    subtitle: "Click Refresh to scan Launch Agents and Daemons",
-                    gradient: Theme.primaryGradient)
+                    subtitle: "Click Refresh to scan Launch Agents and Daemons")
                 Spacer()
             } else {
                 HStack(spacing: 0) {
@@ -111,7 +110,7 @@ struct StartupManagerView: View {
                                 .frame(width: 26, height: 26)
                             Image(systemName: category.icon)
                                 .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(Theme.brand)
+                                .foregroundStyle(Theme.brand)
                         }
 
                         Text(category.rawValue)
@@ -142,7 +141,7 @@ struct StartupManagerView: View {
     }
 
     private var rightContent: some View {
-        ScrollView(showsIndicators: false) {
+        ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 Text(selectedCategory.rawValue)
                     .font(.system(size: 20, weight: .bold))
@@ -179,6 +178,7 @@ struct StartupManagerView: View {
             }
             .padding(24)
         }
+        .scrollIndicators(.hidden)
         .frame(maxWidth: .infinity)
     }
 
@@ -191,7 +191,7 @@ struct StartupManagerView: View {
                     Image(nsImage: appIcon)
                         .resizable()
                         .frame(width: 28, height: 28)
-                        .cornerRadius(6)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
                 } else {
                     ZStack {
                         RoundedRectangle(cornerRadius: 6)
@@ -200,7 +200,7 @@ struct StartupManagerView: View {
                         if item.type == .loginItem {
                             Image(systemName: "app.fill").foregroundStyle(.secondary)
                         } else {
-                            Image(systemName: "gearshape.fill").foregroundColor(Theme.brand)
+                            Image(systemName: "gearshape.fill").foregroundStyle(Theme.brand)
                         }
                     }
                 }
@@ -237,12 +237,26 @@ struct StartupManagerView: View {
 
                     Text(item.isEnabled ? "Enabled" : "Disabled")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(item.isEnabled ? Theme.success : .secondary)
+                        .foregroundStyle(item.isEnabled ? Theme.success : .secondary)
                         .frame(width: 54, alignment: .leading)
                 }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
+            // C3: Context menu on startup items
+            .contextMenu {
+                Button {
+                    NSWorkspace.shared.selectFile(item.path, inFileViewerRootedAtPath: "")
+                } label: {
+                    Label("Reveal in Finder", systemImage: "folder")
+                }
+                Divider()
+                Button {
+                    Task { await vm.toggleStartupItem(at: idx) }
+                } label: {
+                    Label(item.isEnabled ? "Disable" : "Enable", systemImage: item.isEnabled ? "xmark.circle" : "checkmark.circle")
+                }
+            }
 
             if index < displayedItems.count - 1 {
                 Divider().padding(.leading, 58)

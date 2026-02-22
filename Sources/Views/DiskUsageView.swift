@@ -7,10 +7,10 @@
 import SwiftUI
 
 struct DiskUsageView: View {
-    @EnvironmentObject var vm: AppViewModel
+    @Environment(AppViewModel.self) var vm
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
+        ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 HStack {
                     SectionTitle(title: "Disk Analyzer", icon: "chart.pie.fill", gradient: Theme.primaryGradient)
@@ -37,7 +37,7 @@ struct DiskUsageView: View {
                                 Image(systemName: "chevron.left").font(.system(size: 9))
                                 Text("Back").font(.system(size: 10, weight: .medium))
                             }
-                            .foregroundColor(Theme.brand)
+                            .foregroundStyle(Theme.brand)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
                             .background(Theme.brand.opacity(0.06), in: RoundedRectangle(cornerRadius: 5))
@@ -50,7 +50,7 @@ struct DiskUsageView: View {
                     } label: {
                         Text("Home")
                             .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(Theme.brand)
+                            .foregroundStyle(Theme.brand)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
                             .background(Theme.brand.opacity(0.06), in: RoundedRectangle(cornerRadius: 5))
@@ -85,7 +85,7 @@ struct DiskUsageView: View {
                 }
 
                 if vm.diskUsageItems.isEmpty && !vm.isScanning {
-                    EmptyState(icon: "chart.pie", title: "No Data", subtitle: "Click Analyze to see disk usage breakdown for each folder", gradient: Theme.primaryGradient)
+                    EmptyState(icon: "chart.pie", title: "No Data", subtitle: "Click Analyze to see disk usage breakdown for each folder")
                 } else {
                     // BUG-29: Guard against maxSize being 0
                     let maxSize = max(vm.diskUsageItems.first?.size ?? 1, 1)
@@ -93,6 +93,21 @@ struct DiskUsageView: View {
                         DiskRow(item: item, maxSize: maxSize) {
                             if item.isDirectory {
                                 Task { await vm.navigateDiskUsage(to: item.path) }
+                            }
+                        }
+                        // C3: Context menu on disk items
+                        .contextMenu {
+                            Button {
+                                NSWorkspace.shared.selectFile(item.path, inFileViewerRootedAtPath: "")
+                            } label: {
+                                Label("Reveal in Finder", systemImage: "folder")
+                            }
+                            if item.isDirectory {
+                                Button {
+                                    Task { await vm.navigateDiskUsage(to: item.path) }
+                                } label: {
+                                    Label("Browse Directory", systemImage: "arrow.right.circle")
+                                }
                             }
                         }
                     }
@@ -104,6 +119,7 @@ struct DiskUsageView: View {
             }
             .padding(28)
         }
+        .scrollIndicators(.hidden)
         .onAppear { vm.refreshSystemInfo() }
     }
 }

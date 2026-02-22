@@ -9,9 +9,10 @@ import SwiftUI
 
 // MARK: - Content View
 struct ContentView: View {
-    @EnvironmentObject var vm: AppViewModel
+    @Environment(AppViewModel.self) var vm
 
     var body: some View {
+        @Bindable var vm = vm
         NavigationSplitView {
             SidebarView(selectedNav: $vm.selectedNav)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
@@ -31,6 +32,7 @@ struct ContentView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .navigationTitle(vm.selectedNav.rawValue)
             .safeAreaBar(edge: .bottom) {
                 StatusBarView(message: vm.statusMessage, isScanning: vm.isScanning)
             }
@@ -43,7 +45,7 @@ struct ContentView: View {
 // MARK: - Sidebar
 struct SidebarView: View {
     @Binding var selectedNav: NavigationItem
-    @EnvironmentObject var vm: AppViewModel
+    @Environment(AppViewModel.self) var vm
 
     var body: some View {
         VStack(spacing: 0) {
@@ -66,7 +68,7 @@ struct SidebarView: View {
             Divider().padding(.horizontal, 20)
 
             // Nav items
-            ScrollView(showsIndicators: false) {
+            ScrollView {
                 VStack(spacing: 2) {
                     ForEach(NavigationItem.allCases) { item in
                         SidebarButton(item: item, isSelected: selectedNav == item) {
@@ -79,6 +81,7 @@ struct SidebarView: View {
                 .padding(.horizontal, 12)
                 .padding(.top, 12)
             }
+            .scrollIndicators(.hidden)
 
             Spacer()
 
@@ -161,7 +164,7 @@ struct SidebarButton: View {
                     }
                 }
             )
-            .cornerRadius(8)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -215,7 +218,7 @@ struct StatusBarView: View {
                     .frame(width: 14, height: 14)
             } else {
                 Circle()
-                    .fill(Color.green)
+                    .fill(Theme.success)
                     .frame(width: 6, height: 6)
             }
             Text(message)
@@ -309,19 +312,19 @@ struct GradientButton: View {
 }
 
 struct GlassCard<Content: View>: View {
-    let content: () -> Content
+    let content: Content
 
-    init(@ViewBuilder content: @escaping () -> Content) {
-        self.content = content
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
     }
 
     var body: some View {
-        content()
+        content
             .padding(16)
             .background {
                 RoundedRectangle(cornerRadius: 14)
                     .fill(.regularMaterial)
-                    .shadow(color: .black.opacity(0.06), radius: 8, y: 3)
+                    .shadow(color: .primary.opacity(0.06), radius: 8, y: 3)
             }
     }
 }
@@ -361,7 +364,7 @@ struct AnimatedCircularGauge: View {
 struct SectionTitle: View {
     let title: String
     let icon: String
-    let gradient: LinearGradient
+    var gradient: LinearGradient = Theme.primaryGradient
 
     var body: some View {
         HStack(spacing: 10) {
@@ -379,7 +382,7 @@ struct EmptyState: View {
     let icon: String
     let title: String
     let subtitle: String
-    let gradient: LinearGradient
+    var gradient: LinearGradient = Theme.primaryGradient
 
     var body: some View {
         VStack(spacing: 16) {

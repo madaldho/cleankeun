@@ -7,7 +7,9 @@
 import Foundation
 import Darwin
 
-@MainActor
+// H5: Removed @MainActor — this service performs blocking I/O (Mach kernel calls,
+// getifaddrs, FileManager) and is called from within a Task in AppViewModel.
+// Running on @MainActor would unnecessarily block the main thread.
 class SystemMonitorService {
     static let shared = SystemMonitorService()
 

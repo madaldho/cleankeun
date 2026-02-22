@@ -8,79 +8,82 @@ import Foundation
 import SwiftUI
 
 @MainActor
-class AppViewModel: ObservableObject {
-    @Published var selectedNav: NavigationItem = .dashboard
-    @Published var isScanning = false
-    @Published var scanProgress: Double = 0
-    @Published var statusMessage = "Ready"
+@Observable
+class AppViewModel {
+    var selectedNav: NavigationItem = .dashboard
+    var isScanning = false
+    var scanProgress: Double = 0
+    var statusMessage = "Ready"
 
     // Cleaning progress
-    @Published var isCleaning = false
-    @Published var cleaningProgress: Double = 0
-    @Published var cleaningCurrentFile = ""
-    @Published var cleaningFreedSoFar: Int64 = 0
+    var isCleaning = false
+    var cleaningProgress: Double = 0
+    var cleaningCurrentFile = ""
+    var cleaningFreedSoFar: Int64 = 0
 
     // Dashboard
-    @Published var diskTotal: Int64 = 0
-    @Published var diskUsed: Int64 = 0
-    @Published var diskFree: Int64 = 0
-    @Published var memoryInfo: MemoryInfo?
-    @Published var cpuInfo: CPUInfo?
-    @Published var networkInfo: NetworkInfo?
+    var diskTotal: Int64 = 0
+    var diskUsed: Int64 = 0
+    var diskFree: Int64 = 0
+    var memoryInfo: MemoryInfo?
+    var cpuInfo: CPUInfo?
+    var networkInfo: NetworkInfo?
 
     // Junk
-    @Published var junkItems: [JunkItem] = []
-    @Published var junkByCategory: [JunkCategory: [JunkItem]] = [:]
-    @Published var totalJunkSize: Int64 = 0
+    var junkItems: [JunkItem] = []
+    var junkByCategory: [JunkCategory: [JunkItem]] = [:]
+    var totalJunkSize: Int64 = 0
 
     // Apps
-    @Published var installedApps: [InstalledApp] = []
-    @Published var appSearchText = ""
-    @Published var leftovers: [RelatedFile] = []
+    var installedApps: [InstalledApp] = []
+    var appSearchText = ""
+    var leftovers: [RelatedFile] = []
 
     // Large Files
-    @Published var largeFiles: [LargeFile] = []
-    @Published var allScannedLargeFiles: [LargeFile] = []  // full unfiltered results
-    @Published var largeFileMinSize: Int64 = 50 * 1024 * 1024 {
+    var largeFiles: [LargeFile] = []
+    var allScannedLargeFiles: [LargeFile] = []  // full unfiltered results
+    var largeFileMinSize: Int64 = 50 * 1024 * 1024 {
         didSet { applyLargeFileFilters() }
     }
-    @Published var largeFileFilter: LargeFileType? = nil {
+    var largeFileFilter: LargeFileType? = nil {
         didSet { applyLargeFileFilters() }
     }
 
     // Duplicates
-    @Published var duplicateGroups: [DuplicateGroup] = []
-    @Published var totalDuplicatesSize: Int64 = 0
+    var duplicateGroups: [DuplicateGroup] = []
+    var totalDuplicatesSize: Int64 = 0
 
     // Startup
-    @Published var startupItems: [StartupItem] = []
+    var startupItems: [StartupItem] = []
 
     // Disk Usage
-    @Published var diskUsageItems: [DiskUsageItem] = []
-    @Published var currentDiskPath: String = NSHomeDirectory()
+    var diskUsageItems: [DiskUsageItem] = []
+    var currentDiskPath: String = NSHomeDirectory()
 
     // Shredder
-    @Published var shredItems: [ShredItem] = []
+    var shredItems: [ShredItem] = []
 
-    // Monitor timer — reference counted so multiple views can call start/stop
-    private var monitorTimer: Timer?
+    // Monitor task handle for structured concurrency
+    private var monitorTask: Task<Void, Never>?
     private var monitorRefCount = 0
 
     var filteredApps: [InstalledApp] {
         if appSearchText.isEmpty { return installedApps }
-        return installedApps.filter { $0.name.localizedCaseInsensitiveContains(appSearchText) }
+        return installedApps.filter { $0.name.localizedStandardContains(appSearchText) }
     }
 
     var selectedJunkSize: Int64 { junkItems.filter(\.isSelected).reduce(0) { $0 + $1.size } }
     var selectedJunkCount: Int { junkItems.filter(\.isSelected).count }
 
-    // MARK: - Monitor
+    // MARK: - Monitor (H8: Use structured concurrency instead of Timer)
     func startMonitoring() {
         monitorRefCount += 1
-        guard monitorTimer == nil else { return }
+        guard monitorTask == nil else { return }
         refreshSystemInfo()
-        monitorTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in
+        monitorTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(3))
+                guard !Task.isCancelled else { break }
                 self?.refreshSystemInfo()
             }
         }
@@ -89,8 +92,8 @@ class AppViewModel: ObservableObject {
     func stopMonitoring() {
         monitorRefCount = max(monitorRefCount - 1, 0)
         guard monitorRefCount == 0 else { return }
-        monitorTimer?.invalidate()
-        monitorTimer = nil
+        monitorTask?.cancel()
+        monitorTask = nil
     }
 
     func refreshSystemInfo() {
@@ -253,7 +256,6 @@ class AppViewModel: ObservableObject {
 
     func toggleStartupItem(at index: Int) async {
         guard index < startupItems.count else { return }
-        // BUG-08: Now async — process runs off main thread
         if await StartupManagerService.shared.toggleStartupItem(startupItems[index]) {
             startupItems[index].isEnabled.toggle()
         }
@@ -285,7 +287,6 @@ class AppViewModel: ObservableObject {
         shredItems.append(ShredItem(path: url.path, size: size, isDirectory: isDir.boolValue))
     }
 
-    // BUG-19: Accept passes parameter from the view
     func shredAllItems(passes: Int = 3) async {
         isScanning = true; statusMessage = "Securely shredding files..."
         var errors: [String] = []

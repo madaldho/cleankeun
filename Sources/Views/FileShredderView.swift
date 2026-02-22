@@ -8,7 +8,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct FileShredderView: View {
-    @EnvironmentObject var vm: AppViewModel
+    @Environment(AppViewModel.self) var vm
     @State private var showConfirm = false
     @State private var isDragOver = false
     @State private var shredPasses: Int = 3
@@ -41,7 +41,7 @@ struct FileShredderView: View {
 
     private var shredderContent: some View {
         VStack(spacing: 0) {
-            ScrollView(showsIndicators: false) {
+            ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     HStack {
                         SectionTitle(
@@ -143,6 +143,7 @@ struct FileShredderView: View {
                 }
                 .padding(28)
             }
+            .scrollIndicators(.hidden)
 
             // Bottom action bar
             if !vm.shredItems.isEmpty {
@@ -166,7 +167,7 @@ struct FileShredderView: View {
                         } label: {
                             Text("Clear All")
                                 .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(.secondary)
+                                .foregroundStyle(.secondary)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 6)
                                 .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 6))
@@ -219,7 +220,7 @@ struct FileShredderView: View {
                 Text("Add Files")
                     .font(.system(size: 12, weight: .medium))
             }
-            .foregroundColor(Theme.brand)
+            .foregroundStyle(Theme.brand)
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
             .background(Theme.brand.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
@@ -228,12 +229,12 @@ struct FileShredderView: View {
         .buttonStyle(.plain)
     }
 
+    // C5: Use Task { @MainActor in } instead of DispatchQueue.main.async
     private func handleDrop(providers: [NSItemProvider]) {
         for provider in providers {
-            // Use loadObject instead of deprecated loadItem(forTypeIdentifier:)
             provider.loadObject(ofClass: NSURL.self) { reading, _ in
                 if let url = reading as? URL {
-                    DispatchQueue.main.async {
+                    Task { @MainActor in
                         vm.addShredItem(url: url)
                     }
                 }
@@ -255,7 +256,7 @@ struct ShredItemRow: View {
                     .frame(width: 32, height: 32)
                 Image(systemName: item.isDirectory ? "folder.fill" : "doc.fill")
                     .font(.system(size: 14))
-                    .foregroundColor(item.isDirectory ? Theme.brand : Theme.warning)
+                    .foregroundStyle(item.isDirectory ? Theme.brand : Theme.warning)
             }
 
             VStack(alignment: .leading, spacing: 2) {
@@ -277,7 +278,7 @@ struct ShredItemRow: View {
             Button(action: onRemove) {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 16))
-                    .foregroundColor(.secondary.opacity(isHovered ? 1.0 : 0.5))
+                    .foregroundStyle(.secondary.opacity(isHovered ? 1.0 : 0.5))
                     .frame(width: 28, height: 28)
                     .contentShape(Circle())
             }

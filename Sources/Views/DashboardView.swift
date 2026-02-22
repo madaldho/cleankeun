@@ -7,10 +7,10 @@
 import SwiftUI
 
 struct DashboardView: View {
-    @EnvironmentObject var vm: AppViewModel
+    @Environment(AppViewModel.self) var vm
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
+        ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 SectionTitle(
                     title: "Dashboard", icon: "sparkles.square.filled.on.square",
@@ -244,6 +244,7 @@ struct DashboardView: View {
             }
             .padding(28)
         }
+        .scrollIndicators(.hidden)
     }
 }
 
@@ -270,7 +271,7 @@ struct QuickAction: View {
                 RoundedRectangle(cornerRadius: 12)
                     .fill(.regularMaterial)
                     .shadow(
-                        color: .black.opacity(isHovered ? 0.08 : 0.04),
+                        color: .primary.opacity(isHovered ? 0.08 : 0.04),
                         radius: isHovered ? 8 : 4, y: 2)
             }
             .contentShape(RoundedRectangle(cornerRadius: 12))

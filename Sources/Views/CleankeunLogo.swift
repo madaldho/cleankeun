@@ -36,12 +36,12 @@ struct CleankeunLogo: View {
                 // Sparkles
                 Image(systemName: "sparkle")
                     .font(.system(size: size * 0.3, weight: .bold))
-                    .foregroundColor(.white)
+                    .foregroundStyle(.white)
                     .offset(x: -size * 0.15, y: -size * 0.15)
 
                 Image(systemName: "sparkle")
                     .font(.system(size: size * 0.15, weight: .bold))
-                    .foregroundColor(.white.opacity(0.8))
+                    .foregroundStyle(.white.opacity(0.8))
                     .offset(x: size * 0.2, y: size * 0.1)
             }
         }

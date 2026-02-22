@@ -24,9 +24,21 @@ class ToolkitService {
     }()
 
     // MARK: - Async Process Helper (BUG-07, BUG-36)
-    /// Runs a process off the main thread and reads stderr for error messages.
-    /// Uses nullDevice for stdout to prevent pipe buffer deadlocks (BUG-36).
-    /// When requiresRoot is true, uses osascript to prompt for admin password.
+    /// Runs a subprocess off the main thread using `DispatchQueue.global(qos: .userInitiated)`.
+    ///
+    /// **Why DispatchQueue.global instead of structured concurrency?**
+    /// `Process.run()` + `waitUntilExit()` are blocking synchronous calls that can take
+    /// an arbitrary amount of time (e.g., Spotlight reindexing, admin password prompts).
+    /// Swift concurrency tasks should never block their executor thread — doing so can
+    /// exhaust the cooperative thread pool and cause deadlocks. By dispatching to a GCD
+    /// queue, we isolate the blocking work from the Swift concurrency runtime.
+    ///
+    /// The `withCheckedContinuation` bridges the GCD callback back into structured
+    /// concurrency so callers can `await` the result safely.
+    ///
+    /// Reads stderr for error messages. Uses nullDevice for stdout to prevent pipe buffer
+    /// deadlocks (BUG-36). When `requiresRoot` is true, uses osascript to prompt for
+    /// admin password.
     private func runProcess(
         executableURL: URL,
         arguments: [String],

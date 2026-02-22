@@ -7,7 +7,7 @@
 import SwiftUI
 
 struct ToolkitView: View {
-    @EnvironmentObject var vm: AppViewModel
+    @Environment(AppViewModel.self) var vm
     @State private var toolResults: [String: ToolResult] = [:]
     @State private var activeIntroTool: String? = nil
     @State private var showTrashConfirm = false
@@ -43,7 +43,7 @@ struct ToolkitView: View {
     }
 
     private var toolkitContent: some View {
-        ScrollView(showsIndicators: false) {
+        ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 SectionTitle(
                     title: "Toolkit", icon: "wrench.and.screwdriver.fill",
@@ -166,6 +166,7 @@ struct ToolkitView: View {
             }
             .padding(28)
         }
+        .scrollIndicators(.hidden)
         .onAppear { refreshTrashInfo() }
         .alert("Empty Trash?", isPresented: $showTrashConfirm) {
             Button("Cancel", role: .cancel) { }
@@ -234,7 +235,7 @@ struct ToolCard: View {
                         .frame(width: 40, height: 40)
                     Image(systemName: icon)
                         .font(.system(size: 17, weight: .medium))
-                        .foregroundColor(color)
+                        .foregroundStyle(color)
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -272,7 +273,7 @@ struct ToolCard: View {
                         Text("Run")
                             .font(.system(size: 11, weight: .semibold))
                     }
-                    .foregroundColor(.white)
+                    .foregroundStyle(.white)
                     .padding(.horizontal, 20)
                     .padding(.vertical, 9)
                     .background(color, in: RoundedRectangle(cornerRadius: 8))
@@ -301,16 +302,16 @@ struct ToolCard: View {
         case .running:
             Text("Running...")
                 .font(.system(size: 10, weight: .medium))
-                .foregroundColor(Theme.warning)
+                .foregroundStyle(Theme.warning)
         case .success:
             Text(result.message)
                 .font(.system(size: 10, weight: .medium))
-                .foregroundColor(Theme.success)
+                .foregroundStyle(Theme.success)
                 .lineLimit(1)
         case .failed:
             Text(result.message)
                 .font(.system(size: 10, weight: .medium))
-                .foregroundColor(Theme.danger)
+                .foregroundStyle(Theme.danger)
                 .lineLimit(1)
         }
     }
@@ -331,7 +332,7 @@ struct InfoChip: View {
                     .frame(width: 36, height: 36)
                 Image(systemName: icon)
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(color)
+                    .foregroundStyle(color)
             }
             Text(value)
                 .font(.system(size: 12, weight: .semibold, design: .rounded))

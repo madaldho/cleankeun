@@ -7,7 +7,7 @@
 import SwiftUI
 
 struct AppUninstallerView: View {
-    @EnvironmentObject var vm: AppViewModel
+    @Environment(AppViewModel.self) var vm
     @State private var appToUninstall: InstalledApp? = nil
     @State private var showConfirm = false
     @State private var showLeftovers = false
@@ -32,6 +32,7 @@ struct AppUninstallerView: View {
     }
 
     var body: some View {
+        @Bindable var vm = vm
         VStack(spacing: 0) {
             // Header Action Bar
             HStack {
@@ -104,7 +105,7 @@ struct AppUninstallerView: View {
                     Divider()
 
                     // Main App List
-                    ScrollView(showsIndicators: false) {
+                    ScrollView {
                         VStack(spacing: 12) {
                             HStack {
                                 Text("\(filteredApps.count) applications")
@@ -132,10 +133,26 @@ struct AppUninstallerView: View {
                                         showConfirm = true
                                     }
                                 )
+                                .contextMenu {
+                                    Button("Reveal in Finder") {
+                                        NSWorkspace.shared.selectFile(app.path, inFileViewerRootedAtPath: "")
+                                    }
+                                    Button("Uninstall \(app.name)") {
+                                        appToUninstall = app
+                                        showConfirm = true
+                                    }
+                                    Divider()
+                                    Button(app.isSelected ? "Deselect" : "Select") {
+                                        if let i = vm.installedApps.firstIndex(where: { $0.id == app.id }) {
+                                            vm.installedApps[i].isSelected.toggle()
+                                        }
+                                    }
+                                }
                             }
                         }
                         .padding(20)
                     }
+                    .scrollIndicators(.hidden)
                 }
             }
 
@@ -235,7 +252,7 @@ struct FilterSection<T: Equatable & RawRepresentable & Hashable>: View where T.R
                             ? AnyShapeStyle(Theme.brand.opacity(0.1))
                             : AnyShapeStyle(Color.clear)
                     )
-                    .cornerRadius(6)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -259,7 +276,7 @@ struct AppCard: View {
                     app.isSelected.toggle()
                 } label: {
                     Image(systemName: app.isSelected ? "checkmark.square.fill" : "square")
-                        .foregroundStyle(app.isSelected ? Theme.brand : Color.gray.opacity(0.5))
+                        .foregroundStyle(app.isSelected ? Theme.brand : .secondary.opacity(0.5))
                         .font(.system(size: 16))
                         .frame(width: 28, height: 28)
                         .contentShape(Rectangle())
@@ -268,7 +285,7 @@ struct AppCard: View {
 
                 if let icon = app.icon {
                     Image(nsImage: icon).resizable()
-                        .frame(width: 32, height: 32).cornerRadius(8)
+                        .frame(width: 32, height: 32).clipShape(RoundedRectangle(cornerRadius: 8))
                 } else {
                     RoundedRectangle(cornerRadius: 8).fill(Theme.brand.opacity(0.1))
                         .frame(width: 32, height: 32)
@@ -342,7 +359,7 @@ struct AppCard: View {
             RoundedRectangle(cornerRadius: 12)
                 .fill(.regularMaterial)
                 .shadow(
-                    color: .black.opacity(isHovered ? 0.08 : 0.04), radius: isHovered ? 8 : 4, y: 2
+                    color: .primary.opacity(isHovered ? 0.08 : 0.04), radius: isHovered ? 8 : 4, y: 2
                 )
         }
         .animation(.easeInOut(duration: 0.15), value: isHovered)
@@ -363,7 +380,7 @@ struct ComponentRow: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "square")
-                        .foregroundStyle(Color.gray.opacity(0.3))
+                        .foregroundStyle(.secondary.opacity(0.3))
                         .font(.system(size: 12))
 
                     Text(name)

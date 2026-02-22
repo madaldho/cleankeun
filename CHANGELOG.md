@@ -5,6 +5,31 @@ All notable changes to Cleankeun will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-02-22
+
+### Changed
+
+- **Migrated to `@Observable` / `@Environment`** — Complete migration from `ObservableObject` + `@EnvironmentObject` + `@Published` to Swift Observation framework (`@Observable`, `@Environment(AppViewModel.self)`, `@Bindable`). Reduces overhead and enables granular view updates.
+- **Timer replaced with structured concurrency** — System monitoring timer in AppViewModel now uses `Task` + `Task.sleep` instead of Foundation `Timer`, properly cancellable via `task.cancel()`.
+- **`foregroundColor` → `foregroundStyle`** — Replaced all deprecated `foregroundColor()` calls across 8 view files (~30+ instances) with modern `foregroundStyle()`.
+- **`cornerRadius` → `clipShape`** — Replaced all deprecated `.cornerRadius()` calls (~12 instances) with `.clipShape(RoundedRectangle(cornerRadius:))`.
+- **`ScrollView(showsIndicators:)` → `.scrollIndicators(.hidden)`** — Replaced deprecated parameter across all 10 view files.
+- **Hard-coded colors replaced with semantic tokens** — `Color.black.opacity()` → `Color.primary.opacity()`, `Color.gray.opacity()` → `.secondary.opacity()`, `Color.green` → `Theme.success` for correct light/dark mode behavior.
+- **`DispatchQueue.main.async` → `Task { @MainActor in }`** — FileShredderView's drag-and-drop handler now uses Swift concurrency instead of GCD for main-thread dispatch.
+- **`activate(ignoringOtherApps:)` → `activate()`** — Replaced deprecated NSApplication activation API in MenuBarView.
+- **SystemMonitorService: removed `@MainActor`** — Service performs blocking I/O (Mach kernel calls, `getifaddrs`, FileManager) and is called from background Tasks; `@MainActor` was unnecessarily blocking the main thread.
+- **DateFormatter optimization** — DuplicateFinderView's preview pane now uses a static `DateFormatter` instead of creating one on every view body evaluation.
+- **ToolkitService documentation** — Added comprehensive doc comments explaining why `DispatchQueue.global().async` is used for subprocess execution (blocking `Process.run()` + `waitUntilExit()` would exhaust Swift concurrency thread pool).
+
+### Added
+
+- **Context menus** — Right-click context menus on list items in DuplicateFinderView (Reveal in Finder, Select All/Deselect All, Select All Except First), StartupManagerView (Reveal in Finder, Enable/Disable), and DiskUsageView (Reveal in Finder, Browse Directory).
+- **Menu bar commands** — Application menu with Navigate (Cmd+1–0), Actions (Cmd+R scan, Cmd+Delete clean), and Help menus. Settings scene accessible via Cmd+,.
+- **Keyboard shortcuts** — Full keyboard navigation across all 10 features.
+- **`localizedStandardContains`** — App search now uses locale-aware string matching instead of `lowercased().contains()`.
+- **Navigation title** — Detail view now sets `.navigationTitle()` for proper window title.
+- **`GlassCard` / `SectionTitle` / `EmptyState` API cleanup** — `GlassCard` stores content directly (not as `@escaping` closure), `SectionTitle` and `EmptyState` gradient parameter now has default value.
+
 ## [1.1.5] - 2026-02-22
 
 ### Fixed
