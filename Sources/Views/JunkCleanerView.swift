@@ -11,121 +11,221 @@ struct JunkCleanerView: View {
     @State private var showConfirm = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 20) {
-                    HStack {
-                        SectionTitle(
-                            title: "Flash Clean", icon: "bolt.circle.fill",
-                            gradient: Theme.primaryGradient)
-                        Spacer()
-                        GradientButton(
-                            "Scan", icon: "magnifyingglass", gradient: Theme.primaryGradient,
-                            isLoading: vm.isScanning
-                        ) {
-                            Task { await vm.scanJunk() }
+        ZStack {
+            VStack(spacing: 0) {
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 20) {
+                        HStack {
+                            SectionTitle(
+                                title: "Flash Clean", icon: "bolt.circle.fill",
+                                gradient: Theme.primaryGradient)
+                            Spacer()
+                            GradientButton(
+                                "Scan", icon: "magnifyingglass", gradient: Theme.primaryGradient,
+                                isLoading: vm.isScanning
+                            ) {
+                                Task { await vm.scanJunk() }
+                            }
+                        }
+
+                        if vm.junkItems.isEmpty && !vm.isScanning {
+                            EmptyState(
+                                icon: "sparkles", title: "System Looks Clean",
+                                subtitle:
+                                    "Click Scan to find junk files, caches, logs, and temporary files on your Mac",
+                                gradient: Theme.primaryGradient)
+                        } else if !vm.junkItems.isEmpty {
+                            // Summary
+                            GlassCard {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("\(vm.junkItems.count) files found")
+                                            .font(.system(size: 15, weight: .semibold))
+                                        Text(
+                                            "Total: \(ByteCountFormatter.string(fromByteCount: vm.totalJunkSize, countStyle: .file))"
+                                        )
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    HStack(spacing: 12) {
+                                        Text(
+                                            "Selected: \(ByteCountFormatter.string(fromByteCount: vm.selectedJunkSize, countStyle: .file))"
+                                        )
+                                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                        .foregroundStyle(Theme.brand)
+
+                                        Button("All") { vm.toggleAllJunk(selected: true) }
+                                            .buttonStyle(.plain)
+                                            .font(.system(size: 11, weight: .medium))
+                                            .foregroundStyle(Theme.brand)
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 5)
+                                            .background(Theme.brand.opacity(0.08), in: RoundedRectangle(cornerRadius: 5))
+                                            .contentShape(Rectangle())
+                                        Button("None") { vm.toggleAllJunk(selected: false) }
+                                            .buttonStyle(.plain)
+                                            .font(.system(size: 11, weight: .medium))
+                                            .foregroundStyle(Theme.brand)
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 5)
+                                            .background(Theme.brand.opacity(0.08), in: RoundedRectangle(cornerRadius: 5))
+                                            .contentShape(Rectangle())
+                                    }
+                                }
+                            }
+
+                            // Category cards
+                            ForEach(JunkCategory.allCases) { cat in
+                                if let items = vm.junkByCategory[cat], !items.isEmpty {
+                                    JunkCategoryRow(
+                                        category: cat, items: items,
+                                        onToggle: { sel in
+                                            vm.toggleJunkCategory(cat, selected: sel)
+                                        },
+                                        onToggleItem: { item in
+                                            vm.toggleJunkItem(item)
+                                        })
+                                }
+                            }
                         }
                     }
+                    .padding(28)
+                }
 
-                    if vm.junkItems.isEmpty && !vm.isScanning {
-                        EmptyState(
-                            icon: "sparkles", title: "System Looks Clean",
-                            subtitle:
-                                "Click Scan to find junk files, caches, logs, and temporary files on your Mac",
-                            gradient: Theme.primaryGradient)
-                    } else if !vm.junkItems.isEmpty {
-                        // Summary
-                        GlassCard {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("\(vm.junkItems.count) files found")
-                                        .font(.system(size: 15, weight: .semibold))
-                                    Text(
-                                        "Total: \(ByteCountFormatter.string(fromByteCount: vm.totalJunkSize, countStyle: .file))"
-                                    )
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                HStack(spacing: 12) {
-                                    Text(
-                                        "Selected: \(ByteCountFormatter.string(fromByteCount: vm.selectedJunkSize, countStyle: .file))"
-                                    )
-                                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                                    .foregroundStyle(Theme.brand)
-
-                                    Button("All") { vm.toggleAllJunk(selected: true) }
-                                        .buttonStyle(.plain)
-                                        .font(.system(size: 11, weight: .medium))
-                                        .foregroundStyle(Theme.brand)
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 5)
-                                        .background(Theme.brand.opacity(0.08), in: RoundedRectangle(cornerRadius: 5))
-                                        .contentShape(Rectangle())
-                                    Button("None") { vm.toggleAllJunk(selected: false) }
-                                        .buttonStyle(.plain)
-                                        .font(.system(size: 11, weight: .medium))
-                                        .foregroundStyle(Theme.brand)
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 5)
-                                        .background(Theme.brand.opacity(0.08), in: RoundedRectangle(cornerRadius: 5))
-                                        .contentShape(Rectangle())
-                                }
+                if !vm.junkItems.isEmpty {
+                    BottomBar {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("\(vm.selectedJunkCount) items selected")
+                                    .font(.system(size: 13, weight: .medium))
+                                Text(
+                                    ByteCountFormatter.string(
+                                        fromByteCount: vm.selectedJunkSize, countStyle: .file)
+                                )
+                                .font(.system(size: 11, design: .rounded))
+                                .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            GradientButton(
+                                "Clean", icon: "trash",
+                                gradient: vm.selectedJunkCount > 0
+                                    ? Theme.dangerGradient
+                                    : LinearGradient(
+                                        colors: [.gray], startPoint: .leading, endPoint: .trailing),
+                                isLoading: vm.isScanning
+                            ) {
+                                showConfirm = true
                             }
                         }
-
-                        // Category cards
-                        ForEach(JunkCategory.allCases) { cat in
-                            if let items = vm.junkByCategory[cat], !items.isEmpty {
-                                JunkCategoryRow(
-                                    category: cat, items: items,
-                                    onToggle: { sel in
-                                        vm.toggleJunkCategory(cat, selected: sel)
-                                    },
-                                    onToggleItem: { item in
-                                        vm.toggleJunkItem(item)
-                                    })
-                            }
-                        }
+                    }
+                    .alert("Confirm Cleanup", isPresented: $showConfirm) {
+                        Button("Cancel", role: .cancel) {}
+                        Button("Clean", role: .destructive) { Task { await vm.cleanJunk() } }
+                    } message: {
+                        Text(
+                            "Permanently delete \(vm.selectedJunkCount) files (\(ByteCountFormatter.string(fromByteCount: vm.selectedJunkSize, countStyle: .file)))?"
+                        )
                     }
                 }
-                .padding(28)
             }
 
-            if !vm.junkItems.isEmpty {
-                BottomBar {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("\(vm.selectedJunkCount) items selected")
-                                .font(.system(size: 13, weight: .medium))
-                            Text(
-                                ByteCountFormatter.string(
-                                    fromByteCount: vm.selectedJunkSize, countStyle: .file)
-                            )
-                            .font(.system(size: 11, design: .rounded))
-                            .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        GradientButton(
-                            "Clean", icon: "trash",
-                            gradient: vm.selectedJunkCount > 0
-                                ? Theme.dangerGradient
-                                : LinearGradient(
-                                    colors: [.gray], startPoint: .leading, endPoint: .trailing),
-                            isLoading: vm.isScanning
-                        ) {
-                            showConfirm = true
+            // Cleaning progress overlay
+            if vm.isCleaning {
+                CleaningProgressOverlay(
+                    progress: vm.cleaningProgress,
+                    currentFile: vm.cleaningCurrentFile,
+                    freedSoFar: vm.cleaningFreedSoFar
+                )
+            }
+        }
+    }
+}
+
+// MARK: - Cleaning Progress Overlay
+struct CleaningProgressOverlay: View {
+    let progress: Double
+    let currentFile: String
+    let freedSoFar: Int64
+
+    @State private var animatedProgress: Double = 0
+    @State private var sparkleRotation: Double = 0
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.4)
+                .ignoresSafeArea()
+
+            VStack(spacing: 24) {
+                // Animated sparkle icon
+                ZStack {
+                    Circle()
+                        .fill(Theme.brand.opacity(0.15))
+                        .frame(width: 80, height: 80)
+                    Circle()
+                        .fill(Theme.brand.opacity(0.08))
+                        .frame(width: 100, height: 100)
+
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 32, weight: .medium))
+                        .foregroundStyle(Theme.brand)
+                        .rotationEffect(.degrees(sparkleRotation))
+                }
+
+                VStack(spacing: 8) {
+                    Text("Cleaning in Progress")
+                        .font(.system(size: 18, weight: .bold))
+                    Text("\(Int(animatedProgress * 100))%")
+                        .font(.system(size: 36, weight: .heavy, design: .rounded))
+                        .foregroundStyle(Theme.brand)
+                }
+
+                // Progress bar
+                VStack(spacing: 8) {
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color.white.opacity(0.1))
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Theme.primaryGradient)
+                                .frame(width: geo.size.width * animatedProgress)
                         }
                     }
+                    .frame(height: 12)
+                    .frame(maxWidth: 300)
+
+                    if freedSoFar > 0 {
+                        Text("Freed \(ByteCountFormatter.string(fromByteCount: freedSoFar, countStyle: .file))")
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Theme.brand)
+                    }
                 }
-                .alert("Confirm Cleanup", isPresented: $showConfirm) {
-                    Button("Cancel", role: .cancel) {}
-                    Button("Clean", role: .destructive) { Task { await vm.cleanJunk() } }
-                } message: {
-                    Text(
-                        "Permanently delete \(vm.selectedJunkCount) files (\(ByteCountFormatter.string(fromByteCount: vm.selectedJunkSize, countStyle: .file)))?"
-                    )
+
+                // Current file
+                if !currentFile.isEmpty {
+                    Text(currentFile)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: 300)
                 }
+            }
+            .padding(40)
+            .background(
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(.ultraThickMaterial)
+                    .shadow(color: .black.opacity(0.3), radius: 30, y: 10)
+            )
+        }
+        .onAppear {
+            withAnimation(.linear(duration: 2).repeatForever(autoreverses: false)) {
+                sparkleRotation = 360
+            }
+        }
+        .onChange(of: progress) { _, newValue in
+            withAnimation(.easeInOut(duration: 0.3)) {
+                animatedProgress = newValue
             }
         }
     }

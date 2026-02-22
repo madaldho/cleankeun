@@ -14,6 +14,12 @@ class AppViewModel: ObservableObject {
     @Published var scanProgress: Double = 0
     @Published var statusMessage = "Ready"
 
+    // Cleaning progress
+    @Published var isCleaning = false
+    @Published var cleaningProgress: Double = 0
+    @Published var cleaningCurrentFile = ""
+    @Published var cleaningFreedSoFar: Int64 = 0
+
     // Dashboard
     @Published var diskTotal: Int64 = 0
     @Published var diskUsed: Int64 = 0
@@ -34,8 +40,13 @@ class AppViewModel: ObservableObject {
 
     // Large Files
     @Published var largeFiles: [LargeFile] = []
-    @Published var largeFileMinSize: Int64 = 50 * 1024 * 1024
-    @Published var largeFileFilter: LargeFileType? = nil
+    @Published var allScannedLargeFiles: [LargeFile] = []  // full unfiltered results
+    @Published var largeFileMinSize: Int64 = 50 * 1024 * 1024 {
+        didSet { applyLargeFileFilters() }
+    }
+    @Published var largeFileFilter: LargeFileType? = nil {
+        didSet { applyLargeFileFilters() }
+    }
 
     // Duplicates
     @Published var duplicateGroups: [DuplicateGroup] = []
@@ -107,13 +118,29 @@ class AppViewModel: ObservableObject {
     }
 
     func cleanJunk() async {
-        isScanning = true
+        isCleaning = true
+        cleaningProgress = 0
+        cleaningCurrentFile = ""
+        cleaningFreedSoFar = 0
         statusMessage = "Cleaning..."
-        let result = JunkCleanerService.shared.cleanItems(junkItems)
+
+        let itemsToClean = junkItems
+        let result = await Task.detached { [weak self] () -> (deleted: Int, freedSpace: Int64, errors: [String]) in
+            return JunkCleanerService.shared.cleanItemsWithProgress(itemsToClean) { current, total, freed, fileName in
+                Task { @MainActor in
+                    guard let self = self else { return }
+                    self.cleaningProgress = total > 0 ? Double(current) / Double(total) : 0
+                    self.cleaningCurrentFile = fileName
+                    self.cleaningFreedSoFar = freed
+                }
+            }
+        }.value
+
         let cleanMsg = "Cleaned \(result.deleted) files, freed \(ByteCountFormatter.string(fromByteCount: result.freedSpace, countStyle: .file))"
         await scanJunk()
         statusMessage = cleanMsg
-        isScanning = false
+        isCleaning = false
+        cleaningProgress = 1.0
     }
 
     func toggleAllJunk(selected: Bool) {
@@ -159,17 +186,32 @@ class AppViewModel: ObservableObject {
     // MARK: - Large Files
     func scanLargeFiles() async {
         isScanning = true; statusMessage = "Scanning large files..."
-        largeFiles = await LargeFileScannerService.shared.scanLargeFiles(minimumSize: largeFileMinSize, fileType: largeFileFilter)
+        // Scan ALL files >= 1MB with no type filter — store full results
+        allScannedLargeFiles = await LargeFileScannerService.shared.scanLargeFiles(minimumSize: 1 * 1024 * 1024, fileType: nil)
+        applyLargeFileFilters()
         isScanning = false
         let total = largeFiles.reduce(0) { $0 + $1.size }
         statusMessage = "Found \(largeFiles.count) files (\(ByteCountFormatter.string(fromByteCount: total, countStyle: .file)))"
+    }
+
+    /// Filters `allScannedLargeFiles` by current `largeFileMinSize` and `largeFileFilter`,
+    /// storing the result in `largeFiles` for display.
+    func applyLargeFileFilters() {
+        largeFiles = allScannedLargeFiles.filter { file in
+            if file.size < largeFileMinSize { return false }
+            if let typeFilter = largeFileFilter, file.fileType != typeFilter { return false }
+            return true
+        }
     }
 
     func deleteLargeFiles() async {
         isScanning = true
         let result = LargeFileScannerService.shared.deleteFiles(largeFiles)
         let deleteMsg = "Freed \(ByteCountFormatter.string(fromByteCount: result.freedSpace, countStyle: .file))"
-        await scanLargeFiles()
+        // Remove deleted files from allScannedLargeFiles too
+        let deletedPaths = Set(largeFiles.filter(\.isSelected).map(\.path))
+        allScannedLargeFiles.removeAll { deletedPaths.contains($0.path) }
+        applyLargeFileFilters()
         statusMessage = deleteMsg
         isScanning = false
     }

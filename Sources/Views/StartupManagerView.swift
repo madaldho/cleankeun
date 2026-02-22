@@ -186,14 +186,22 @@ struct StartupManagerView: View {
         let (idx, item) = pair
         return VStack(spacing: 0) {
             HStack(spacing: 14) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.primary.opacity(0.06))
+                // Show actual app icon if we can resolve bundle identifier
+                if let appIcon = appIconForItem(item) {
+                    Image(nsImage: appIcon)
+                        .resizable()
                         .frame(width: 28, height: 28)
-                    if item.type == .loginItem {
-                        Image(systemName: "app.fill").foregroundStyle(.secondary)
-                    } else {
-                        Image(systemName: "gearshape.fill").foregroundColor(Theme.brand)
+                        .cornerRadius(6)
+                } else {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color.primary.opacity(0.06))
+                            .frame(width: 28, height: 28)
+                        if item.type == .loginItem {
+                            Image(systemName: "app.fill").foregroundStyle(.secondary)
+                        } else {
+                            Image(systemName: "gearshape.fill").foregroundColor(Theme.brand)
+                        }
                     }
                 }
 
@@ -265,5 +273,61 @@ struct StartupManagerView: View {
                 Spacer()
             }
         }
+    }
+
+    /// Tries to resolve an app icon for the startup item via its bundle identifier.
+    /// Falls back to searching for an .app bundle in ProgramArguments or Program paths.
+    private func appIconForItem(_ item: StartupItem) -> NSImage? {
+        // 1. Try bundle identifier directly
+        if let bundleId = item.bundleIdentifier,
+           let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
+            return NSWorkspace.shared.icon(forFile: appURL.path)
+        }
+
+        // 2. Try to find an .app in the plist's path (e.g. /Applications/Chrome.app/Contents/...)
+        //    Walk up from the plist's Program/ProgramArguments path to find a .app bundle
+        if let bundleId = item.bundleIdentifier {
+            // Many labels are like "com.google.Chrome" — try common app locations
+            let possiblePaths = [
+                "/Applications",
+                "\(NSHomeDirectory())/Applications",
+                "/System/Applications",
+            ]
+            for basePath in possiblePaths {
+                if let apps = try? FileManager.default.contentsOfDirectory(atPath: basePath) {
+                    for app in apps where app.hasSuffix(".app") {
+                        let appPath = (basePath as NSString).appendingPathComponent(app)
+                        if let bundle = Bundle(path: appPath),
+                           bundle.bundleIdentifier == bundleId {
+                            return NSWorkspace.shared.icon(forFile: appPath)
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Try extracting .app path from the plist file itself
+        let plistPath = item.path
+        if let data = FileManager.default.contents(atPath: plistPath),
+           let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] {
+            var binaryPath: String?
+            if let program = plist["Program"] as? String {
+                binaryPath = program
+            } else if let args = plist["ProgramArguments"] as? [String], let first = args.first {
+                binaryPath = first
+            }
+            if let binary = binaryPath {
+                // Walk up path to find .app bundle
+                var pathURL = URL(fileURLWithPath: binary)
+                while pathURL.path != "/" {
+                    if pathURL.pathExtension == "app" {
+                        return NSWorkspace.shared.icon(forFile: pathURL.path)
+                    }
+                    pathURL = pathURL.deletingLastPathComponent()
+                }
+            }
+        }
+
+        return nil
     }
 }

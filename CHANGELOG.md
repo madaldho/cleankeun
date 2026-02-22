@@ -5,6 +5,20 @@ All notable changes to Cleankeun will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.5] - 2026-02-22
+
+### Fixed
+
+- **Trash detection broken** — `getTrashInfo()` and `emptyTrash()` now scan both `~/.Trash` (user trash) and `/Volumes/<name>/.Trashes/<uid>/` (external volume trashes). Previously only checked user trash, causing "Trash is empty" when items existed on external drives.
+- **Large Files re-scans on every filter change** — Large Files now scans once (all files >= 1MB) and stores the full result set. Changing minimum size or file type filters instantly filters locally without rescanning. Auto-scans on first visit. Empty state message now differentiates "no files found" vs "no files match current filters".
+- **Duplicate Finder missing image preview** — Preview pane now shows actual image thumbnails (via `NSImage(contentsOfFile:)`) for image files (jpg, png, gif, heic, etc.) instead of generic file icons. Non-image files still show the system file icon.
+- **Startup Services missing app icons** — Startup items now show actual app bundle icons resolved via `NSWorkspace.shared.urlForApplication(withBundleIdentifier:)`, with fallback to scanning `/Applications` for matching bundle IDs, and further fallback to extracting `.app` paths from `Program`/`ProgramArguments` in the plist. Falls back to generic icons only when no app bundle can be found.
+- **Admin privilege tools silently failing** — Tools requiring root (Rebuild Spotlight, Free Purgeable Space) now prompt for administrator password via native macOS dialog using `osascript "do shell script ... with administrator privileges"`. Previously these would fail silently or show an unhelpful error. Startup service toggles for system plists (`/Library/LaunchDaemons`) also escalate via admin prompt instead of silently failing.
+
+### Added
+
+- **Cleaning progress animation** — Flash Clean now shows a full overlay during cleaning with animated sparkle icon, percentage counter, progress bar with gradient fill, "Freed X" live counter, and current filename display. `cleanItemsWithProgress()` reports per-item progress.
+
 ## [1.1.4] - 2026-02-22
 
 ### Added

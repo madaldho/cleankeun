@@ -223,18 +223,27 @@ struct DuplicateFinderView: View {
                             .shadow(color: .primary.opacity(0.1), radius: 10, y: 5)
                             .frame(width: 140, height: 180)
 
-                        // Icon mapping
-                        VStack(spacing: 10) {
-                            Image(nsImage: NSWorkspace.shared.icon(forFile: file.path))
+                        // Show actual image thumbnail for image files, otherwise file icon
+                        if LargeFileType.detect(from: file.path) == .image,
+                           let nsImage = NSImage(contentsOfFile: file.path) {
+                            Image(nsImage: nsImage)
                                 .resizable()
-                                .scaledToFit()
-                                .frame(width: 60, height: 60)
+                                .scaledToFill()
+                                .frame(width: 130, height: 170)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        } else {
+                            VStack(spacing: 10) {
+                                Image(nsImage: NSWorkspace.shared.icon(forFile: file.path))
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 60, height: 60)
 
-                            Text(
-                                file.path.components(separatedBy: ".").last?.uppercased() ?? "FILE"
-                            )
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundStyle(.tertiary)
+                                Text(
+                                    file.path.components(separatedBy: ".").last?.uppercased() ?? "FILE"
+                                )
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundStyle(.tertiary)
+                            }
                         }
                     }
                     .padding(.top, 40)

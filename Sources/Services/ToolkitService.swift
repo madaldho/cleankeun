@@ -26,6 +26,7 @@ class ToolkitService {
     // MARK: - Async Process Helper (BUG-07, BUG-36)
     /// Runs a process off the main thread and reads stderr for error messages.
     /// Uses nullDevice for stdout to prevent pipe buffer deadlocks (BUG-36).
+    /// When requiresRoot is true, uses osascript to prompt for admin password.
     private func runProcess(
         executableURL: URL,
         arguments: [String],
@@ -34,8 +35,23 @@ class ToolkitService {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let process = Process()
-                process.executableURL = executableURL
-                process.arguments = arguments
+
+                if requiresRoot {
+                    // Build the shell command string with proper escaping
+                    let cmdParts = [executableURL.path] + arguments
+                    let escapedCmd = cmdParts.map { arg in
+                        // Escape single quotes for AppleScript string
+                        arg.replacingOccurrences(of: "\\", with: "\\\\")
+                           .replacingOccurrences(of: "\"", with: "\\\"")
+                    }.joined(separator: " ")
+                    let script = "do shell script \"\(escapedCmd)\" with administrator privileges"
+                    process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+                    process.arguments = ["-e", script]
+                } else {
+                    process.executableURL = executableURL
+                    process.arguments = arguments
+                }
+
                 process.standardOutput = FileHandle.nullDevice
                 let errorPipe = Pipe()
                 process.standardError = errorPipe
@@ -83,7 +99,6 @@ class ToolkitService {
 
     // MARK: - Rebuild Spotlight Index
     func rebuildSpotlight() async -> (success: Bool, message: String) {
-        // BUG-22: mdutil -E / requires root
         let result = await runProcess(
             executableURL: URL(fileURLWithPath: "/usr/bin/mdutil"),
             arguments: ["-E", "/"],
@@ -92,11 +107,8 @@ class ToolkitService {
 
         if result.success {
             return (true, "Spotlight reindexing started. This may take a while.")
-        } else if result.exitCode == 1 {
-            return (
-                false,
-                "Spotlight rebuild requires administrator privileges. Run Cleankeun with sudo or grant Full Disk Access."
-            )
+        } else if result.errorOutput.contains("User canceled") || result.exitCode == 1 && result.errorOutput.isEmpty {
+            return (false, "Administrator authentication was cancelled.")
         } else {
             return (
                 false,
@@ -126,17 +138,36 @@ class ToolkitService {
 
     // MARK: - Trash Info
     func getTrashInfo() -> (itemCount: Int, totalSize: Int64) {
-        let trashPath = "\(NSHomeDirectory())/.Trash"
         let fm = FileManager.default
-        guard let items = try? fm.contentsOfDirectory(atPath: trashPath) else {
-            return (0, 0)
-        }
+        var totalItems = 0
         var totalSize: Int64 = 0
-        for item in items {
-            let fullPath = (trashPath as NSString).appendingPathComponent(item)
-            totalSize += sizeOfItem(atPath: fullPath, fm: fm)
+
+        // 1. User trash: ~/.Trash
+        let userTrash = "\(NSHomeDirectory())/.Trash"
+        if let items = try? fm.contentsOfDirectory(atPath: userTrash) {
+            totalItems += items.count
+            for item in items {
+                let fullPath = (userTrash as NSString).appendingPathComponent(item)
+                totalSize += sizeOfItem(atPath: fullPath, fm: fm)
+            }
         }
-        return (items.count, totalSize)
+
+        // 2. Volume trashes: /Volumes/<name>/.Trashes/<uid>/
+        let uid = getuid()
+        if let volumes = try? fm.contentsOfDirectory(atPath: "/Volumes") {
+            for vol in volumes {
+                let trashPath = "/Volumes/\(vol)/.Trashes/\(uid)"
+                if let items = try? fm.contentsOfDirectory(atPath: trashPath) {
+                    totalItems += items.count
+                    for item in items {
+                        let fullPath = (trashPath as NSString).appendingPathComponent(item)
+                        totalSize += sizeOfItem(atPath: fullPath, fm: fm)
+                    }
+                }
+            }
+        }
+
+        return (totalItems, totalSize)
     }
 
     private func sizeOfItem(atPath path: String, fm: FileManager) -> Int64 {
@@ -162,32 +193,46 @@ class ToolkitService {
 
     // MARK: - Empty Trash Securely
     func emptyTrash() async -> (success: Bool, message: String) {
-        let trashPath = "\(NSHomeDirectory())/.Trash"
         let fm = FileManager.default
-        guard let items = try? fm.contentsOfDirectory(atPath: trashPath) else {
-            return (false, "Cannot access Trash")
-        }
-
+        var totalDeleted = 0
         var errors = 0
-        for item in items {
-            let fullPath = (trashPath as NSString).appendingPathComponent(item)
-            do {
-                try fm.removeItem(atPath: fullPath)
-            } catch {
-                errors += 1
+
+        // Helper to clean a trash directory
+        func cleanTrashDir(_ path: String) {
+            guard let items = try? fm.contentsOfDirectory(atPath: path) else { return }
+            for item in items {
+                let fullPath = (path as NSString).appendingPathComponent(item)
+                do {
+                    try fm.removeItem(atPath: fullPath)
+                    totalDeleted += 1
+                } catch {
+                    errors += 1
+                }
             }
         }
 
-        if errors == 0 {
-            return (true, "Trash emptied (\(items.count) items removed)")
+        // 1. User trash
+        cleanTrashDir("\(NSHomeDirectory())/.Trash")
+
+        // 2. Volume trashes
+        let uid = getuid()
+        if let volumes = try? fm.contentsOfDirectory(atPath: "/Volumes") {
+            for vol in volumes {
+                cleanTrashDir("/Volumes/\(vol)/.Trashes/\(uid)")
+            }
+        }
+
+        if totalDeleted == 0 && errors == 0 {
+            return (true, "Trash is already empty")
+        } else if errors == 0 {
+            return (true, "Trash emptied (\(totalDeleted) items removed)")
         } else {
-            return (true, "Removed \(items.count - errors) items, \(errors) failed")
+            return (true, "Removed \(totalDeleted) items, \(errors) failed (may need permissions)")
         }
     }
 
     // MARK: - Free Purgeable Disk Space
     func freePurgeableSpace() async -> (success: Bool, message: String) {
-        // BUG-23: diskutil apfs defragment requires root
         let result = await runProcess(
             executableURL: URL(fileURLWithPath: "/usr/sbin/diskutil"),
             arguments: ["apfs", "defragment", "/", "live"],
@@ -196,8 +241,8 @@ class ToolkitService {
 
         if result.success {
             return (true, "Purgeable space freed")
-        } else if result.exitCode == 1 {
-            return (false, "Freeing purgeable space requires administrator privileges.")
+        } else if result.errorOutput.contains("User canceled") || result.exitCode == 1 && result.errorOutput.isEmpty {
+            return (false, "Administrator authentication was cancelled.")
         } else {
             return (
                 false,

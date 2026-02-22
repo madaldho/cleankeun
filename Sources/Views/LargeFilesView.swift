@@ -63,8 +63,9 @@ struct LargeFilesView: View {
                     if vm.largeFiles.isEmpty && !vm.isScanning {
                         EmptyState(
                             icon: "doc.badge.arrow.up", title: "No Large Files",
-                            subtitle:
-                                "Scan your Downloads, Desktop, Documents, Movies, Music, and Pictures for large files",
+                            subtitle: vm.allScannedLargeFiles.isEmpty
+                                ? "Scan your Downloads, Desktop, Documents, Movies, Music, and Pictures for large files"
+                                : "No files match the current filters. Try adjusting minimum size or file type.",
                             gradient: Theme.warningGradient)
                     } else {
                         ForEach(Array(vm.largeFiles.enumerated()), id: \.element.id) { _, file in
@@ -114,6 +115,11 @@ struct LargeFilesView: View {
                         "Free up \(ByteCountFormatter.string(fromByteCount: selectedSize, countStyle: .file)) by moving selected files to Trash"
                     )
                 }
+            }
+        }
+        .onAppear {
+            if vm.allScannedLargeFiles.isEmpty && !vm.isScanning {
+                Task { await vm.scanLargeFiles() }
             }
         }
     }

@@ -92,15 +92,20 @@ class JunkCleanerService {
         return items
     }
 
-    // MARK: - Clean Items
-    func cleanItems(_ items: [JunkItem]) -> (deleted: Int, freedSpace: Int64, errors: [String]) {
+    // MARK: - Clean Items with Progress
+    func cleanItemsWithProgress(
+        _ items: [JunkItem],
+        onProgress: @escaping (Int, Int, Int64, String) -> Void
+    ) -> (deleted: Int, freedSpace: Int64, errors: [String]) {
         var deleted = 0
         var freedSpace: Int64 = 0
         var errors: [String] = []
+        let selected = items.filter(\.isSelected)
+        let total = selected.count
 
-        for item in items where item.isSelected {
+        for (index, item) in selected.enumerated() {
+            onProgress(index, total, freedSpace, item.fileName)
             do {
-                // BUG-16: Use trashItem for recoverability instead of permanent removeItem
                 try fileManager.trashItem(at: URL(fileURLWithPath: item.path), resultingItemURL: nil)
                 deleted += 1
                 freedSpace += item.size
@@ -108,7 +113,12 @@ class JunkCleanerService {
                 errors.append("Failed to delete \(item.fileName): \(error.localizedDescription)")
             }
         }
-
+        onProgress(total, total, freedSpace, "")
         return (deleted, freedSpace, errors)
+    }
+
+    // MARK: - Clean Items (legacy)
+    func cleanItems(_ items: [JunkItem]) -> (deleted: Int, freedSpace: Int64, errors: [String]) {
+        return cleanItemsWithProgress(items) { _, _, _, _ in }
     }
 }
