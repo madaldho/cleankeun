@@ -112,10 +112,13 @@ struct AppUninstallerView: View {
                                 Spacer()
                             }
 
-                            ForEach(filteredApps.indices, id: \.self) { index in
+                            ForEach(filteredApps) { app in
                                 AppCard(
                                     app: Binding(
-                                        get: { self.filteredApps[index] },
+                                        get: {
+                                            // Always look up the latest version from the source of truth
+                                            vm.installedApps.first(where: { $0.id == app.id }) ?? app
+                                        },
                                         set: { newValue in
                                             if let i = vm.installedApps.firstIndex(where: {
                                                 $0.id == newValue.id
@@ -124,7 +127,7 @@ struct AppUninstallerView: View {
                                             }
                                         }),
                                     onUninstall: {
-                                        appToUninstall = filteredApps[index]
+                                        appToUninstall = app
                                         showConfirm = true
                                     }
                                 )
@@ -164,8 +167,7 @@ struct AppUninstallerView: View {
             LeftoversSheet(leftovers: vm.leftovers)
         }
         .alert(
-            appToUninstall != nil
-                ? "Uninstall \(appToUninstall!.name)?" : "Uninstall Selected Apps?",
+            appToUninstall.map { "Uninstall \($0.name)?" } ?? "Uninstall Selected Apps?",
             isPresented: $showConfirm
         ) {
             Button("Cancel", role: .cancel) {}

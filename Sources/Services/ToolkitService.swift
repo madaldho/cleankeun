@@ -9,6 +9,20 @@ import Foundation
 class ToolkitService {
     static let shared = ToolkitService()
 
+    // Cached values — these never change during app runtime
+    lazy var cachedMacOSVersion: String = {
+        let version = ProcessInfo.processInfo.operatingSystemVersion
+        return "macOS \(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
+    }()
+
+    lazy var cachedMachineModel: String = {
+        var size: Int = 0
+        sysctlbyname("hw.model", nil, &size, nil, 0)
+        var model = [CChar](repeating: 0, count: size)
+        sysctlbyname("hw.model", &model, &size, nil, 0)
+        return String(cString: model)
+    }()
+
     // MARK: - Async Process Helper (BUG-07, BUG-36)
     /// Runs a process off the main thread and reads stderr for error messages.
     /// Uses nullDevice for stdout to prevent pipe buffer deadlocks (BUG-36).
@@ -22,15 +36,17 @@ class ToolkitService {
                 let process = Process()
                 process.executableURL = executableURL
                 process.arguments = arguments
-                // BUG-36: Don't use Pipe for stdout if we don't read it — use nullDevice
                 process.standardOutput = FileHandle.nullDevice
                 let errorPipe = Pipe()
                 process.standardError = errorPipe
 
                 do {
                     try process.run()
-                    process.waitUntilExit()
+                    // Read stderr BEFORE waitUntilExit to avoid pipe buffer deadlock.
+                    // If the subprocess writes > 64KB to stderr while we're blocked on
+                    // waitUntilExit, both sides will deadlock.
                     let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                    process.waitUntilExit()
                     let errorOutput = String(data: errorData, encoding: .utf8) ?? ""
                     continuation.resume(
                         returning: (
@@ -172,16 +188,11 @@ class ToolkitService {
 
     // MARK: - macOS Version
     func getMacOSVersion() -> String {
-        let version = ProcessInfo.processInfo.operatingSystemVersion
-        return "macOS \(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
+        return cachedMacOSVersion
     }
 
     // MARK: - Machine Model
     func getMachineModel() -> String {
-        var size: Int = 0
-        sysctlbyname("hw.model", nil, &size, nil, 0)
-        var model = [CChar](repeating: 0, count: size)
-        sysctlbyname("hw.model", &model, &size, nil, 0)
-        return String(cString: model)
+        return cachedMachineModel
     }
 }

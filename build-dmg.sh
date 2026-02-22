@@ -3,7 +3,7 @@ set -e
 
 APP_NAME="Cleankeun"
 BUNDLE_ID="com.cleankeun.pro"
-VERSION="1.0.0"
+VERSION="1.1.0"
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="$PROJECT_DIR/.build/release"
@@ -27,6 +27,14 @@ echo "  Binary: $(du -h "$BINARY" | cut -f1) at $BINARY"
 
 # 2. Create .app bundle structure
 echo "[2/4] Creating app bundle..."
+
+# Preserve existing icon if present
+EXISTING_ICON=""
+if [ -f "$APP_BUNDLE/Contents/Resources/AppIcon.icns" ]; then
+    EXISTING_ICON="$(mktemp)"
+    cp "$APP_BUNDLE/Contents/Resources/AppIcon.icns" "$EXISTING_ICON"
+fi
+
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_BUNDLE/Contents/MacOS"
 mkdir -p "$APP_BUNDLE/Contents/Resources"
@@ -209,6 +217,10 @@ PYEOF
 if [ -d "$ICONSET_DIR" ] && [ "$(ls -A "$ICONSET_DIR" 2>/dev/null)" ]; then
     iconutil -c icns "$ICONSET_DIR" -o "$APP_BUNDLE/Contents/Resources/AppIcon.icns" 2>/dev/null || echo "  Warning: iconutil failed, app will use default icon"
     rm -rf "$ICONSET_DIR"
+elif [ -n "$EXISTING_ICON" ] && [ -f "$EXISTING_ICON" ]; then
+    echo "  Restoring previously built icon..."
+    cp "$EXISTING_ICON" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+    rm -f "$EXISTING_ICON"
 else
     echo "  Warning: No icon images generated, app will use default icon"
 fi

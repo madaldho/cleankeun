@@ -160,6 +160,7 @@ struct MenuBarView: View {
         }
         .frame(width: 320)
         .onAppear { vm.startMonitoring() }
+        .onDisappear { vm.stopMonitoring() }
     }
 
     private var memoryColor: Color {
@@ -171,11 +172,22 @@ struct MenuBarView: View {
 
     private func openMainApp(_ nav: NavigationItem) {
         vm.selectedNav = nav
+
+        // Ensure the app shows as a regular app (Dock icon, can receive focus)
+        NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)
-        if let window = NSApplication.shared.windows.first(where: {
-            $0.title.contains("Cleankeun") || $0.isKeyWindow
+
+        // Find the main window — exclude menu bar panels and sheets
+        // Main WindowGroup window is the one that canBecomeMain
+        if let mainWindow = NSApplication.shared.windows.first(where: {
+            $0.canBecomeMain
         }) {
-            window.makeKeyAndOrderFront(nil)
+            mainWindow.makeKeyAndOrderFront(nil)
+        } else {
+            // If the window was closed, open a new one via the WindowGroup
+            // On macOS 26+, we can use the environment openWindow action,
+            // but for now just bring the app to front — SwiftUI will re-create the window.
+            NSApplication.shared.activate(ignoringOtherApps: true)
         }
     }
 }

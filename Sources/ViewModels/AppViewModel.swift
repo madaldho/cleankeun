@@ -51,8 +51,9 @@ class AppViewModel: ObservableObject {
     // Shredder
     @Published var shredItems: [ShredItem] = []
 
-    // Monitor timer
+    // Monitor timer — reference counted so multiple views can call start/stop
     private var monitorTimer: Timer?
+    private var monitorRefCount = 0
 
     var filteredApps: [InstalledApp] {
         if appSearchText.isEmpty { return installedApps }
@@ -64,9 +65,8 @@ class AppViewModel: ObservableObject {
 
     // MARK: - Monitor
     func startMonitoring() {
-        // BUG-10/28: Invalidate existing timer before creating a new one to prevent duplicates
-        monitorTimer?.invalidate()
-        monitorTimer = nil
+        monitorRefCount += 1
+        guard monitorTimer == nil else { return }
         refreshSystemInfo()
         monitorTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
@@ -76,6 +76,8 @@ class AppViewModel: ObservableObject {
     }
 
     func stopMonitoring() {
+        monitorRefCount = max(monitorRefCount - 1, 0)
+        guard monitorRefCount == 0 else { return }
         monitorTimer?.invalidate()
         monitorTimer = nil
     }
@@ -108,8 +110,9 @@ class AppViewModel: ObservableObject {
         isScanning = true
         statusMessage = "Cleaning..."
         let result = JunkCleanerService.shared.cleanItems(junkItems)
-        statusMessage = "Cleaned \(result.deleted) files, freed \(ByteCountFormatter.string(fromByteCount: result.freedSpace, countStyle: .file))"
+        let cleanMsg = "Cleaned \(result.deleted) files, freed \(ByteCountFormatter.string(fromByteCount: result.freedSpace, countStyle: .file))"
         await scanJunk()
+        statusMessage = cleanMsg
         isScanning = false
     }
 
@@ -158,8 +161,9 @@ class AppViewModel: ObservableObject {
     func deleteLargeFiles() async {
         isScanning = true
         let result = LargeFileScannerService.shared.deleteFiles(largeFiles)
-        statusMessage = "Freed \(ByteCountFormatter.string(fromByteCount: result.freedSpace, countStyle: .file))"
+        let deleteMsg = "Freed \(ByteCountFormatter.string(fromByteCount: result.freedSpace, countStyle: .file))"
         await scanLargeFiles()
+        statusMessage = deleteMsg
         isScanning = false
     }
 
@@ -176,8 +180,9 @@ class AppViewModel: ObservableObject {
         isScanning = true
         let all = duplicateGroups.flatMap(\.files).filter(\.isSelected)
         let result = DuplicateFinderService.shared.deleteFiles(all)
-        statusMessage = "Freed \(ByteCountFormatter.string(fromByteCount: result.freedSpace, countStyle: .file))"
+        let deleteMsg = "Freed \(ByteCountFormatter.string(fromByteCount: result.freedSpace, countStyle: .file))"
         await scanDuplicates()
+        statusMessage = deleteMsg
         isScanning = false
     }
 
