@@ -27,6 +27,11 @@ class JunkCleanerService {
         var items: [JunkItem] = []
         let home = NSHomeDirectory()
         var trashAccessDenied = false
+        
+        let purgeableSize = getPurgeableSpaceSize()
+        if purgeableSize > 0 {
+            items.append(JunkItem(path: "Purgeable Space", size: purgeableSize, category: .purgeableSpace, isSelected: true))
+        }
 
         // Browser cache directory prefixes to exclude from generic userCache scan
         let browserCachePrefixes = [
@@ -41,19 +46,7 @@ class JunkCleanerService {
             "\(home)/Library/Caches/com.operasoftware.Opera",
         ]
 
-        // 1. Purgeable Space — virtual item (not a real file)
-        let purgeableSize = getPurgeableSpaceSize()
-        if purgeableSize > 100_000 { // Only show if > 100 KB
-            items.append(JunkItem(
-                path: JunkCleanerService.purgeableSpacePath,
-                size: purgeableSize,
-                category: .purgeableSpace,
-                isSelected: false // NOT auto-selected
-            ))
-            onProgress?("Checking purgeable space...", items.count)
-        }
-
-        // 2. System Cache Files — system-level temp/cache dirs
+        // 1. System Cache Files — system-level temp/cache dirs
         let systemCacheTargets: [String] = [
             NSTemporaryDirectory(),
             "/private/var/folders",
@@ -79,6 +72,7 @@ class JunkCleanerService {
         let xcodeTargets = [
             "\(home)/Library/Developer/Xcode/DerivedData",
             "\(home)/Library/Developer/Xcode/Archives",
+            "\(home)/Library/Developer/Xcode/iOS DeviceSupport",
             "\(home)/Library/Developer/CoreSimulator/Caches",
         ]
         for path in xcodeTargets {
@@ -347,31 +341,30 @@ class JunkCleanerService {
         // Use smart-selection default: safe categories start selected, others don't
         let defaultSelected = category.isSafeToAutoSelect
 
-        if let enumerator = fileManager.enumerator(atPath: path) {
-            while let file = enumerator.nextObject() as? String {
-                let fullPath = (path as NSString).appendingPathComponent(file)
+        guard let contents = try? fileManager.contentsOfDirectory(atPath: path) else { return items }
 
-                // Skip excluded prefix paths
-                if !excludePrefixes.isEmpty {
-                    let shouldExclude = excludePrefixes.contains { fullPath.hasPrefix($0) }
-                    if shouldExclude {
-                        continue
-                    }
+        for file in contents {
+            // Skip hidden files/folders to avoid breaking system internals like .DS_Store
+            if file.hasPrefix(".") { continue }
+
+            let fullPath = (path as NSString).appendingPathComponent(file)
+
+            // Skip excluded prefix paths
+            if !excludePrefixes.isEmpty {
+                let shouldExclude = excludePrefixes.contains { fullPath.hasPrefix($0) }
+                if shouldExclude {
+                    continue
                 }
+            }
 
-                if let attrs = try? fileManager.attributesOfItem(atPath: fullPath),
-                   let fileSize = attrs[.size] as? Int64,
-                   fileSize > 0 {
-                    let fileType = attrs[.type] as? FileAttributeType
-                    if fileType != FileAttributeType.typeDirectory {
-                        items.append(JunkItem(
-                            path: fullPath, size: fileSize, category: category,
-                            browserApp: browserApp, isSelected: defaultSelected
-                        ))
-                        if items.count % 20 == 0 {
-                            onProgress?(fullPath, currentCount + items.count)
-                        }
-                    }
+            let size = sizeOfItem(atPath: fullPath)
+            if size > 0 {
+                items.append(JunkItem(
+                    path: fullPath, size: size, category: category,
+                    browserApp: browserApp, isSelected: defaultSelected
+                ))
+                if items.count % 5 == 0 {
+                    onProgress?(fullPath, currentCount + items.count)
                 }
             }
         }
@@ -382,15 +375,19 @@ class JunkCleanerService {
     private func sizeOfItem(atPath path: String) -> Int64 {
         var isDir: ObjCBool = false
         guard fileManager.fileExists(atPath: path, isDirectory: &isDir) else { return 0 }
+        
         if isDir.boolValue {
             var total: Int64 = 0
-            if let enumerator = fileManager.enumerator(atPath: path) {
-                for case let file as String in enumerator {
-                    let fullPath = (path as NSString).appendingPathComponent(file)
-                    if let attrs = try? fileManager.attributesOfItem(atPath: fullPath),
-                       let size = attrs[.size] as? Int64 {
-                        total += size
-                    }
+            guard let enumerator = fileManager.enumerator(
+                at: URL(fileURLWithPath: path),
+                includingPropertiesForKeys: [.totalFileAllocatedSizeKey],
+                options: [.skipsHiddenFiles]
+            ) else { return 0 }
+            
+            while let url = enumerator.nextObject() as? URL {
+                if let values = try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey]),
+                   let size = values.totalFileAllocatedSize {
+                    total += Int64(size)
                 }
             }
             return total

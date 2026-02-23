@@ -12,31 +12,13 @@ struct FileShredderView: View {
     @State private var showConfirm = false
     @State private var isDragOver = false
     @State private var shredPasses: Int = 3
-    @State private var hasStarted = false
 
     var totalSize: Int64 {
         vm.shredItems.reduce(0) { $0 + $1.size }
     }
 
     var body: some View {
-        if !hasStarted {
-            IntroView(
-                title: "Shredder",
-                description:
-                    "File Shredder allows you to permanently delete files when no longer needed, it will overwrite the space once occupied by the deleted file. This means that even if a person or software tool knows exactly where to look for a deleted file, there is no longer any data to be found there.",
-                bullets: [
-                    "There are sensitive data you want to remove securely",
-                    "There are locked items that can't be deleted in the normal way",
-                ],
-                icon: "scissors",
-                gradient: Theme.dangerGradient,
-                buttonTitle: "Select Files",
-                onBack: nil,
-                onStart: { hasStarted = true }
-            )
-        } else {
-            shredderContent
-        }
+        shredderContent
     }
 
     private var shredderContent: some View {

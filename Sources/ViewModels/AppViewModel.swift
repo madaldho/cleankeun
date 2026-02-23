@@ -74,6 +74,7 @@ class AppViewModel {
     var diskUsageItems: [DiskUsageItem] = []
     var currentDiskPath: String = NSHomeDirectory()
     var availableVolumes: [VolumeInfo] = []
+    private var diskUsageCache: [String: [DiskUsageItem]] = [:]
 
     // Shredder
     var shredItems: [ShredItem] = []
@@ -369,7 +370,7 @@ class AppViewModel {
     var selectedJunkSize: Int64 = 0
     var selectedJunkCount: Int = 0
 
-    private func updateJunkSelection() {
+    func updateJunkSelection() {
         var size: Int64 = 0
         var count = 0
         for item in junkItems where item.isSelected {
@@ -460,17 +461,9 @@ class AppViewModel {
         cleaningFreedSoFar = 0
         statusMessage = "Permanently deleting files..."
 
-        // Handle purgeable space separately (virtual item, uses diskutil)
-        let purgeableSelected = junkItems.filter { $0.category == .purgeableSpace && $0.isSelected }
-        if !purgeableSelected.isEmpty {
-            cleaningCurrentFile = "Freeing purgeable space..."
-            let purgeResult = await ToolkitService.shared.freePurgeableSpace()
-            if purgeResult.success {
-                cleaningFreedSoFar += purgeableSelected.reduce(0) { $0 + $1.size }
-            }
-        }
-
         let itemsToClean = junkItems
+        let hasPurgeable = itemsToClean.contains { $0.category == .purgeableSpace && $0.isSelected }
+        
         let result = await Task.detached { [weak self] () -> (deleted: Int, freedSpace: Int64, errors: [String]) in
             return JunkCleanerService.shared.cleanItemsWithProgress(itemsToClean) { current, total, freed, fileName in
                 Task { @MainActor in
@@ -481,8 +474,25 @@ class AppViewModel {
                 }
             }
         }.value
+        
+        var totalFreed = result.freedSpace
+        
+        if hasPurgeable {
+            statusMessage = "Freeing purgeable space..."
+            cleaningCurrentFile = "Freeing macOS purgeable space (this may take a minute)..."
+            let purgeResult = await ToolkitService.shared.freePurgeableSpace { progress, message in
+                Task { @MainActor in
+                    self.cleaningProgress = progress
+                    self.cleaningCurrentFile = message
+                }
+            }
+            if purgeResult.success {
+                let purgeableSize = itemsToClean.filter { $0.category == .purgeableSpace && $0.isSelected }.reduce(0) { $0 + $1.size }
+                totalFreed += purgeableSize
+            }
+        }
 
-        let cleanMsg = "Permanently deleted \(result.deleted) files, freed \(ByteCountFormatter.string(fromByteCount: result.freedSpace, countStyle: .file))"
+        let cleanMsg = "Permanently deleted \(result.deleted) files, freed \(ByteCountFormatter.string(fromByteCount: totalFreed, countStyle: .file))"
         await scanJunk()
         statusMessage = cleanMsg
         isCleaning = false
@@ -535,6 +545,15 @@ class AppViewModel {
         let result = AppUninstallerService.shared.uninstallApp(app)
         statusMessage = result.success ? "\(app.name) removed" : "Failed"
         if result.success { await scanApps() }
+        isScanning = false
+    }
+
+    func removeLeftovers(_ files: [RelatedFile]) async {
+        isScanning = true; statusMessage = "Removing leftovers..."
+        for file in files {
+            try? FileManager.default.removeItem(atPath: file.path)
+        }
+        await scanApps()
         isScanning = false
     }
 
@@ -652,12 +671,50 @@ class AppViewModel {
     func analyzeDiskUsage() async {
         isScanning = true; statusMessage = "Analyzing disk..."
         diskUsageItems = await DiskUsageService.shared.analyzeDiskUsage(path: currentDiskPath)
+        diskUsageCache[currentDiskPath] = diskUsageItems
         isScanning = false; statusMessage = "Analysis complete"
     }
 
-    func navigateDiskUsage(to path: String) async {
+    func navigateDiskUsage(to path: String, withChildren children: [DiskUsageItem]? = nil) async {
         currentDiskPath = path
+        if let children = children, !children.isEmpty {
+            diskUsageItems = children
+            diskUsageCache[path] = children
+            return
+        }
+        if let cached = diskUsageCache[path] {
+            diskUsageItems = cached
+            return
+        }
         await analyzeDiskUsage()
+    }
+
+    func deleteDiskItems(paths: Set<String>) async {
+        isScanning = true
+        statusMessage = "Deleting items..."
+        
+        var freedSpace: Int64 = 0
+        var deletedCount = 0
+        
+        for path in paths {
+            let item = diskUsageItems.first(where: { $0.path == path })
+            do {
+                try FileManager.default.removeItem(atPath: path)
+                if let size = item?.size {
+                    freedSpace += size
+                }
+                deletedCount += 1
+            } catch {
+                print("Failed to delete \(path): \(error.localizedDescription)")
+            }
+        }
+        
+        // Refresh the current view
+        diskUsageCache.removeValue(forKey: currentDiskPath)
+        await analyzeDiskUsage()
+        
+        statusMessage = "Permanently deleted \(deletedCount) items, freed \(ByteCountFormatter.string(fromByteCount: freedSpace, countStyle: .file))"
+        isScanning = false
     }
 
     // MARK: - Shredder

@@ -6,504 +6,686 @@
 
 import SwiftUI
 
+enum AppUninstallSidebarItem: Hashable {
+    case all
+    case leftovers
+    case selected
+    case largeAndOld
+    case source(AppSource)
+    case vendor(AppVendor)
+}
+
 struct AppUninstallerView: View {
     @Environment(AppViewModel.self) var vm
-    @State private var appToUninstall: InstalledApp? = nil
-    @State private var showConfirm = false
-    @State private var showLeftovers = false
-
-    // Filters
-    @State private var selectedSource: AppSource? = nil
-    @State private var selectedVendor: AppVendor? = nil
-
-    var filteredApps: [InstalledApp] {
-        var apps = vm.filteredApps
-        if let s = selectedSource { apps = apps.filter { $0.source == s } }
-        if let v = selectedVendor { apps = apps.filter { $0.vendor == v } }
+    @State private var selectedSidebarItem: AppUninstallSidebarItem = .all
+    @State private var sortOption: AppSortOption = .size
+    
+    // Derived state for apps
+    var appsForCurrentFilter: [InstalledApp] {
+        switch selectedSidebarItem {
+        case .all:
+            return vm.installedApps
+        case .leftovers:
+            return [] // Handled separately
+        case .selected:
+            return vm.installedApps.filter { $0.isSelected }
+        case .largeAndOld:
+            let threeMonthsAgo = Calendar.current.date(byAdding: .month, value: -3, to: Date()) ?? Date()
+            return vm.installedApps.filter { 
+                $0.totalSize > 100 * 1024 * 1024 && 
+                ($0.lastUsedDate ?? Date.distantPast) < threeMonthsAgo 
+            }
+        case .source(let src):
+            return vm.installedApps.filter { $0.source == src }
+        case .vendor(let ven):
+            return vm.installedApps.filter { $0.vendor == ven }
+        }
+    }
+    
+    var sortedApps: [InstalledApp] {
+        var apps = appsForCurrentFilter
+        if !vm.appSearchText.isEmpty {
+            apps = apps.filter { $0.name.localizedStandardContains(vm.appSearchText) }
+        }
+        switch sortOption {
+        case .name:
+            apps.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        case .size:
+            apps.sort { $0.totalSize > $1.totalSize }
+        case .date:
+            apps.sort { ($0.lastUsedDate ?? Date.distantPast) > ($1.lastUsedDate ?? Date.distantPast) }
+        }
         return apps
     }
-
+    
     var totalSelectedSize: Int64 {
-        filteredApps.filter(\.isSelected).reduce(0) { $0 + $1.totalSize }
+        let appsSize = vm.installedApps.filter(\.isSelected).reduce(Int64(0)) { $0 + $1.selectedSize }
+        let leftoversSize = vm.leftovers.filter(\.isSelected).reduce(Int64(0)) { $0 + $1.size }
+        return appsSize + leftoversSize
     }
 
     var selectedCount: Int {
-        filteredApps.filter(\.isSelected).count
+        let appsCount = vm.installedApps.filter(\.isSelected).count
+        let leftoversCount = vm.leftovers.filter(\.isSelected).count
+        return appsCount + leftoversCount
     }
 
     var body: some View {
         @Bindable var vm = vm
+        
         VStack(spacing: 0) {
-            // Header Action Bar
-            HStack {
-                SectionTitle(
-                    title: "App Uninstall", icon: "trash.square.fill", gradient: Theme.dangerGradient
-                )
-                Spacer()
-
-                if !vm.leftovers.isEmpty {
-                    Button {
-                        showLeftovers.toggle()
-                    } label: {
-                        HStack(spacing: 4) {
-                            Circle().fill(Theme.warning).frame(width: 6, height: 6)
-                            Text("\(vm.leftovers.count) Leftovers")
-                                .font(.system(size: 11, weight: .medium))
-                        }
-                        .padding(.horizontal, 12).padding(.vertical, 7)
-                        .background(Theme.warning.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
-                        .contentShape(RoundedRectangle(cornerRadius: 6))
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                // Sort picker
-                HStack(spacing: 4) {
-                    Text("Sort:")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                    Picker("", selection: Binding(
-                        get: { vm.appSortBy },
-                        set: { vm.appSortBy = $0 }
-                    )) {
-                        ForEach(AppSortOption.allCases) { opt in
-                            Text(opt.rawValue).tag(opt)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 160)
-                }
-
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundStyle(.secondary)
-                        .font(.system(size: 12))
-                    TextField("Search applications...", text: $vm.appSearchText)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 13))
-                }
-                .frame(width: 200)
-                .padding(8)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-                .glassEffect(.regular, in: .rect(cornerRadius: 8))
-
-                GradientButton(
-                    "Scan Apps", icon: "magnifyingglass", gradient: Theme.primaryGradient,
-                    isLoading: vm.isScanning
-                ) {
-                    Task { await vm.scanApps() }
+            // Top Toolbar
+            topToolbar
+            
+            Divider()
+            
+            if vm.installedApps.isEmpty && !vm.isScanning {
+                emptyView
+            } else {
+                HStack(spacing: 0) {
+                    // Left Sidebar
+                    leftSidebar
+                    
+                    Divider()
+                    
+                    // Main Content
+                    mainContent
                 }
             }
-            .padding(28)
-            .padding(.bottom, -10)
-
-            // Always show sidebar + main layout (consistent before/after scan)
-            HStack(spacing: 0) {
-                // Left Sidebar Filters
-                VStack(alignment: .leading, spacing: 20) {
-                    FilterSection(
-                        title: "Sources", items: AppSource.allCases, selected: $selectedSource,
-                        apps: vm.filteredApps
-                    ) { $0.source == $1 }
-                    FilterSection(
-                        title: "Vendors", items: AppVendor.allCases, selected: $selectedVendor,
-                        apps: vm.filteredApps
-                    ) { $0.vendor == $1 }
+            
+            Divider()
+            
+            // Bottom Bar
+            bottomBar
+        }
+        .onAppear {
+            if vm.installedApps.isEmpty && !vm.isScanning {
+                Task { await vm.scanApps() }
+            }
+        }
+    }
+    
+    // MARK: - Top Toolbar
+    private var topToolbar: some View {
+        HStack {
+            Button {
+                Task { await vm.scanApps() } // Refresh/Start over
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "chevron.left")
+                    Text("Start Over")
+                }
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            
+            Spacer()
+            
+            Text("App Uninstall")
+                .font(.system(size: 16, weight: .semibold))
+            
+            Spacer()
+            
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField("Search", text: Binding(get: { vm.appSearchText }, set: { vm.appSearchText = $0 }))
+                    .textFieldStyle(.plain)
+                    .frame(width: 120)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+        .background(Color(NSColor.windowBackgroundColor))
+    }
+    
+    // MARK: - Left Sidebar
+    private var leftSidebar: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                // Main categories
+                VStack(spacing: 4) {
+                    sidebarRow(title: "All Applications", icon: "square.grid.2x2", count: vm.installedApps.count, item: .all)
+                    sidebarRow(title: "Leftovers", icon: "square.stack.3d.up", count: vm.leftovers.count, item: .leftovers)
+                    sidebarRow(title: "Selected", icon: "checkmark.circle", count: selectedCount, item: .selected)
+                }
+                
+                // Large and Old
+                let threeMonthsAgo = Calendar.current.date(byAdding: .month, value: -3, to: Date()) ?? Date()
+                let largeOldCount = vm.installedApps.filter { $0.totalSize > 100 * 1024 * 1024 && ($0.lastUsedDate ?? Date.distantPast) < threeMonthsAgo }.count
+                if largeOldCount > 0 {
+                    VStack(spacing: 4) {
+                        sidebarRow(title: "Large and Old", count: largeOldCount, item: .largeAndOld, isHighlighted: true)
+                    }
+                }
+                
+                // Sources
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Sources")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.bottom, 4)
+                    
+                    ForEach(AppSource.allCases) { source in
+                        let count = vm.installedApps.filter { $0.source == source }.count
+                        if count > 0 {
+                            sidebarRow(title: source.rawValue, count: count, item: .source(source))
+                        }
+                    }
+                }
+                
+                // Vendors
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Vendors")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.bottom, 4)
+                    
+                    ForEach(AppVendor.allCases) { vendor in
+                        let count = vm.installedApps.filter { $0.vendor == vendor }.count
+                        if count > 0 {
+                            sidebarRow(title: vendor.rawValue, count: count, item: .vendor(vendor))
+                        }
+                    }
+                }
+            }
+            .padding(16)
+        }
+        .frame(width: 220)
+        .background(Color(NSColor.controlBackgroundColor))
+    }
+    
+    private func sidebarRow(title: String, icon: String? = nil, count: Int, item: AppUninstallSidebarItem, isHighlighted: Bool = false) -> some View {
+        let isSelected = selectedSidebarItem == item
+        return Button {
+            selectedSidebarItem = item
+        } label: {
+            HStack {
+                if let icon = icon {
+                    Image(systemName: icon)
+                        .frame(width: 16)
+                        .foregroundStyle(isSelected ? .white : .secondary)
+                }
+                Text(title)
+                    .font(.system(size: 13, weight: isSelected ? .medium : .regular))
+                    .foregroundStyle(isSelected ? .white : .primary)
+                Spacer()
+                Text("\(count)")
+                    .font(.system(size: 12))
+                    .foregroundStyle(isSelected ? .white.opacity(0.8) : .secondary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isSelected ? (isHighlighted ? Theme.brand : Theme.brand.opacity(0.8)) : (isHighlighted ? Color.primary.opacity(0.05) : Color.clear))
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+    
+    // MARK: - Main Content
+    private var mainContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(headerTitle)
+                        .font(.system(size: 18, weight: .bold))
+                    Text(headerSubtitle)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                
+                if selectedSidebarItem != .leftovers {
+                    Menu {
+                        Picker("", selection: $sortOption) {
+                            ForEach(AppSortOption.allCases) { opt in
+                                Text(opt.rawValue).tag(opt)
+                            }
+                        }
+                    } label: {
+                        Text("Sort by \(sortOption.rawValue)")
+                            .font(.system(size: 12))
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                }
+            }
+            .padding(24)
+            
+            // List
+            if vm.isScanning {
+                VStack {
+                    Spacer()
+                    ProgressView()
+                    Text("Scanning applications...")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 8)
                     Spacer()
                 }
-                .frame(width: 160)
-                .padding(20)
-
-                Divider()
-
-                // Main App List
-                ScrollView {
-                    VStack(spacing: 12) {
-                        if vm.installedApps.isEmpty && !vm.isScanning {
-                            // Empty state within the main area (layout stays consistent)
-                            VStack(spacing: 16) {
-                                Spacer().frame(height: 40)
-                                EmptyState(
-                                    icon: "app.dashed", title: "No Apps Scanned",
-                                    subtitle:
-                                        "Scan to view all installed applications and remove them completely with leftover files",
-                                    gradient: Theme.dangerGradient)
-                                Spacer()
-                            }
-                        } else if vm.isScanning && vm.installedApps.isEmpty {
-                            VStack(spacing: 16) {
-                                Spacer().frame(height: 40)
-                                ProgressView()
-                                    .scaleEffect(1.2)
-                                Text("Scanning applications...")
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundStyle(.secondary)
-                                Spacer()
-                            }
-                            .frame(maxWidth: .infinity)
-                        } else {
-                            HStack {
-                                Text("\(filteredApps.count) applications")
-                                    .font(.system(size: 12, weight: .medium)).foregroundStyle(
-                                        .secondary)
-                                Spacer()
-                                if !filteredApps.isEmpty {
-                                    let totalSize = filteredApps.reduce(0) { $0 + $1.totalSize }
-                                    Text("Total: \(ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file))")
-                                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                                        .foregroundStyle(Theme.brand)
-                                }
-                            }
-
-                            ForEach(filteredApps) { app in
-                                AppCard(
-                                    app: Binding(
-                                        get: {
-                                            vm.installedApps.first(where: { $0.id == app.id }) ?? app
-                                        },
-                                        set: { newValue in
-                                            if let i = vm.installedApps.firstIndex(where: {
-                                                $0.id == newValue.id
-                                            }) {
-                                                vm.installedApps[i] = newValue
-                                            }
-                                        }),
-                                    onUninstall: {
-                                        appToUninstall = app
-                                        showConfirm = true
-                                    }
-                                )
-                                .contextMenu {
-                                    Button("Reveal in Finder") {
-                                        NSWorkspace.shared.selectFile(app.path, inFileViewerRootedAtPath: "")
-                                    }
-                                    Button("Uninstall \(app.name)") {
-                                        appToUninstall = app
-                                        showConfirm = true
-                                    }
-                                    Divider()
-                                    Button(app.isSelected ? "Deselect" : "Select") {
-                                        if let i = vm.installedApps.firstIndex(where: { $0.id == app.id }) {
-                                            vm.installedApps[i].isSelected.toggle()
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    .padding(20)
-                }
-                .scrollIndicators(.hidden)
-            }
-
-            // Bottom Action Bar when items selected
-            if selectedCount > 0 {
-                BottomBar {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("\(selectedCount) items selected")
-                                .font(.system(size: 13, weight: .medium))
-                            Text(
-                                ByteCountFormatter.string(
-                                    fromByteCount: totalSelectedSize, countStyle: .file)
-                            )
-                            .font(.system(size: 11, design: .rounded))
-                            .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        GradientButton(
-                            "Remove Selected", icon: "trash", gradient: Theme.dangerGradient
-                        ) {
-                            appToUninstall = nil
-                            showConfirm = true
-                        }
-                    }
-                }
-            }
-        }
-        .sheet(isPresented: $showLeftovers) {
-            LeftoversSheet(leftovers: vm.leftovers)
-        }
-        .alert(
-            appToUninstall.map { "Uninstall \($0.name)?" } ?? "Uninstall Selected Apps?",
-            isPresented: $showConfirm
-        ) {
-            Button("Cancel", role: .cancel) {}
-            Button("Remove", role: .destructive) {
-                if let app = appToUninstall {
-                    Task { await vm.uninstallApp(app) }
-                } else {
-                    let selected = filteredApps.filter { $0.isSelected }
-                    Task {
-                        for app in selected {
-                            await vm.uninstallApp(app)
-                        }
-                    }
-                }
-            }
-        } message: {
-            if let app = appToUninstall {
-                Text(
-                    "This will remove \(app.name) and \(app.relatedFiles.count) related files (\(app.formattedTotalSize))."
-                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                Text(
-                    "This will remove \(selectedCount) selected applications and their related files (\(ByteCountFormatter.string(fromByteCount: totalSelectedSize, countStyle: .file)))."
-                )
-            }
-        }
-    }
-}
-
-// MARK: - Filters
-struct FilterSection<T: Equatable & RawRepresentable & Hashable>: View where T.RawValue == String {
-    let title: String
-    let items: [T]
-    @Binding var selected: T?
-    let apps: [InstalledApp]
-    let filterMatcher: (InstalledApp, T) -> Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title.uppercased())
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(.secondary)
-
-            ForEach(items, id: \.self) { item in
-                let count = apps.filter { filterMatcher($0, item) }.count
-                Button {
-                    if selected == item { selected = nil } else { selected = item }
-                } label: {
-                    HStack {
-                        Text(item.rawValue)
-                            .font(
-                                .system(size: 12, weight: selected == item ? .semibold : .regular)
-                            )
-                            .foregroundStyle(selected == item ? .primary : .secondary)
-                        Spacer()
-                        Text("\(count)")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(.secondary)
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        if selectedSidebarItem == .leftovers {
+                            leftoversList
+                        } else {
+                            if sortedApps.isEmpty {
+                                Text("No applications found.")
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(.secondary)
+                                    .padding(.top, 40)
+                            } else {
+                                ForEach(sortedApps) { app in
+                                    AppTreeCard(
+                                        app: Binding(
+                                            get: { vm.installedApps.first(where: { $0.id == app.id }) ?? app },
+                                            set: { newVal in
+                                                if let idx = vm.installedApps.firstIndex(where: { $0.id == app.id }) {
+                                                    vm.installedApps[idx] = newVal
+                                                }
+                                            }
+                                        ),
+                                        showDate: selectedSidebarItem == .largeAndOld
+                                    )
+                                }
+                            }
+                        }
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(
-                        selected == item
-                            ? AnyShapeStyle(Theme.brand.opacity(0.1))
-                            : AnyShapeStyle(Color.clear)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                    .contentShape(Rectangle())
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 24)
                 }
-                .buttonStyle(.plain)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(NSColor.windowBackgroundColor))
+    }
+    
+    private var headerTitle: String {
+        switch selectedSidebarItem {
+        case .all: return "All Applications"
+        case .leftovers: return "Leftovers"
+        case .selected: return "Selected Items"
+        case .largeAndOld: return "Large and Old"
+        case .source(let s): return "\(s.rawValue) Apps"
+        case .vendor(let v): return "Apps by \(v.rawValue)"
+        }
+    }
+    
+    private var headerSubtitle: String {
+        switch selectedSidebarItem {
+        case .all: return "Apps installed on your Mac are listed here."
+        case .leftovers: return "Files left behind by previously uninstalled apps."
+        case .selected: return "Items you have selected for removal."
+        case .largeAndOld: return "Apps larger than 100 MB and have not been opened in the past 3 months."
+        case .source: return "Apps grouped by where they were downloaded from."
+        case .vendor: return "Apps grouped by their developer."
+        }
+    }
+    
+    // MARK: - Leftovers List
+    private var leftoversList: some View {
+        VStack(spacing: 0) {
+            ForEach(vm.leftovers) { leftover in
+                HStack(spacing: 12) {
+                    Button {
+                        if let idx = vm.leftovers.firstIndex(where: { $0.id == leftover.id }) {
+                            vm.leftovers[idx].isSelected.toggle()
+                        }
+                    } label: {
+                        Image(systemName: leftover.isSelected ? "checkmark.square.fill" : "square")
+                            .foregroundStyle(leftover.isSelected ? Theme.brand : .secondary)
+                            .font(.system(size: 16))
+                    }
+                    .buttonStyle(.plain)
+                    
+                    Image(systemName: "doc.text.fill")
+                        .foregroundStyle(.secondary)
+                        .font(.system(size: 20))
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(leftover.fileName)
+                            .font(.system(size: 13, weight: .medium))
+                        Text(leftover.path)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    
+                    Spacer()
+                    
+                    Text(leftover.formattedSize)
+                        .font(.system(size: 13, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 8)
+                .padding(.horizontal, 12)
+                .background(Color.primary.opacity(0.02), in: RoundedRectangle(cornerRadius: 8))
             }
         }
     }
+    
+    // MARK: - Bottom Bar
+    private var bottomBar: some View {
+        HStack {
+            Spacer()
+            
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text("\(totalSelectedSize > 0 ? ByteCountFormatter.string(fromByteCount: totalSelectedSize, countStyle: .file) : "0 Byte")")
+                    .font(.system(size: 24, weight: .regular))
+                Text("Selected")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.trailing, 16)
+            
+            let totalAllSize = vm.installedApps.reduce(Int64(0)) { $0 + $1.totalSize } + vm.leftovers.reduce(Int64(0)) { $0 + $1.size }
+            
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text("\(ByteCountFormatter.string(fromByteCount: totalAllSize, countStyle: .file))")
+                    .font(.system(size: 18, weight: .regular))
+                    .foregroundStyle(.secondary)
+                Text("Total")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.trailing, 24)
+            
+            Button {
+                Task {
+                    let appsToRemove = vm.installedApps.filter { $0.isSelected }
+                    for app in appsToRemove {
+                        await vm.uninstallApp(app)
+                    }
+                    
+                    let leftoversToRemove = vm.leftovers.filter { $0.isSelected }
+                    if !leftoversToRemove.isEmpty {
+                        await vm.removeLeftovers(leftoversToRemove)
+                    }
+                }
+            } label: {
+                Text("Remove")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(width: 140, height: 36)
+                    .background(totalSelectedSize > 0 ? Theme.brand : Color.secondary.opacity(0.5))
+                    .clipShape(RoundedRectangle(cornerRadius: 18))
+            }
+            .buttonStyle(.plain)
+            .disabled(totalSelectedSize == 0)
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 16)
+        .background(Color(NSColor.controlBackgroundColor))
+    }
+    
+    // MARK: - Empty View
+    private var emptyView: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "trash.slash")
+                .font(.system(size: 48))
+                .foregroundStyle(.quaternary)
+            Text("No Applications Scanned")
+                .font(.system(size: 18, weight: .bold))
+            Button("Scan Now") {
+                Task { await vm.scanApps() }
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
 }
 
-// MARK: - App Card
-struct AppCard: View {
+// MARK: - App Tree Card
+struct AppTreeCard: View {
     @Binding var app: InstalledApp
-    let onUninstall: () -> Void
+    let showDate: Bool
+    
     @State private var isExpanded = false
     @State private var isHovered = false
 
     var body: some View {
         VStack(spacing: 0) {
+            // Main App Row
             HStack(spacing: 12) {
-                // Checkbox
                 Button {
                     app.isSelected.toggle()
                 } label: {
                     Image(systemName: app.isSelected ? "checkmark.square.fill" : "square")
-                        .foregroundStyle(app.isSelected ? Theme.brand : .secondary.opacity(0.5))
+                        .foregroundStyle(app.isSelected ? Theme.brand : .secondary)
                         .font(.system(size: 16))
-                        .frame(width: 28, height: 28)
-                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
 
                 if let icon = app.icon {
-                    Image(nsImage: icon).resizable()
-                        .frame(width: 32, height: 32).clipShape(RoundedRectangle(cornerRadius: 8))
-                } else {
-                    RoundedRectangle(cornerRadius: 8).fill(Theme.brand.opacity(0.1))
+                    Image(nsImage: icon)
+                        .resizable()
                         .frame(width: 32, height: 32)
-                        .overlay(Image(systemName: "app").foregroundStyle(.secondary))
+                } else {
+                    Image(systemName: "app.fill")
+                        .font(.system(size: 24))
+                        .foregroundStyle(Theme.brand.opacity(0.5))
+                        .frame(width: 32, height: 32)
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(app.name)
-                        .font(.system(size: 13, weight: .semibold))
-                    Text(app.vendor.rawValue)
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 14, weight: .medium))
+                    
+                    if showDate, let date = app.lastUsedDate {
+                        Text(DateFormatter.localizedString(from: date, dateStyle: .medium, timeStyle: .none))
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Spacer()
 
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(app.formattedTotalSize)
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
-                }
+                Text(app.formattedTotalSize)
+                    .font(.system(size: 13, design: .rounded))
+                    .foregroundStyle(.secondary)
 
                 Button {
                     withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() }
                 } label: {
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 10)).foregroundStyle(.secondary)
-                        .frame(width: 28, height: 28)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                        .frame(width: 24, height: 24)
                         .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-
-                Button(action: onUninstall) {
-                    Text("Remove")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 14).padding(.vertical, 6)
-                        .background(Theme.dangerGradient, in: RoundedRectangle(cornerRadius: 6))
-                        .contentShape(RoundedRectangle(cornerRadius: 6))
                 }
                 .buttonStyle(.plain)
             }
             .padding(12)
-
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(app.isSelected ? Theme.brand.opacity(0.1) : (isHovered ? Color.primary.opacity(0.03) : Color.primary.opacity(0.01)))
+            )
+            .onHover { isHovered = $0 }
+            
+            // Expanded Tree View
             if isExpanded {
-                Divider().padding(.horizontal, 14)
                 VStack(spacing: 0) {
-                    // Group Components
-                    ComponentRow(
-                        name: "Bundle", size: app.bundleSize,
-                        items: [RelatedFile(path: app.path, size: app.size, type: .other)])
-                    if app.librarySize > 0 {
-                        ComponentRow(
-                            name: "Library", size: app.librarySize,
-                            items: app.relatedFiles.filter { $0.group == .library })
+                    // Bundle
+                    ComponentGroupRow(
+                        title: "Bundle",
+                        app: $app,
+                        group: .bundle,
+                        isBundle: true
+                    )
+                    
+                    // Library
+                    if app.relatedFiles.contains(where: { $0.group == .library }) {
+                        ComponentGroupRow(title: "Library", app: $app, group: .library, isBundle: false)
                     }
-                    if app.supportSize > 0 {
-                        ComponentRow(
-                            name: "Supporting Files", size: app.supportSize,
-                            items: app.relatedFiles.filter { $0.group == .supportingFiles })
+                    
+                    // Supporting Files
+                    if app.relatedFiles.contains(where: { $0.group == .supportingFiles }) {
+                        ComponentGroupRow(title: "Supporting Files", app: $app, group: .supportingFiles, isBundle: false)
                     }
-                    if app.preferencesSize > 0 {
-                        ComponentRow(
-                            name: "Preferences", size: app.preferencesSize,
-                            items: app.relatedFiles.filter { $0.group == .preferences })
+                    
+                    // Caches
+                    if app.relatedFiles.contains(where: { $0.group == .caches }) {
+                        ComponentGroupRow(title: "Caches", app: $app, group: .caches, isBundle: false)
+                    }
+                    
+                    // Preferences
+                    if app.relatedFiles.contains(where: { $0.group == .preferences }) {
+                        ComponentGroupRow(title: "Preferences", app: $app, group: .preferences, isBundle: false)
                     }
                 }
-                .padding(.vertical, 6)
+                .padding(.leading, 32)
+                .padding(.trailing, 12)
+                .padding(.bottom, 12)
             }
         }
-        .background {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.regularMaterial)
-                .glassEffect(.regular, in: .rect(cornerRadius: 12))
-                .shadow(
-                    color: .primary.opacity(isHovered ? 0.08 : 0.04), radius: isHovered ? 8 : 4, y: 2
-                )
-        }
-        .animation(.easeInOut(duration: 0.15), value: isHovered)
-        .onHover { isHovered = $0 }
     }
 }
 
-struct ComponentRow: View {
-    let name: String
-    let size: Int64
-    let items: [RelatedFile]
+struct ComponentGroupRow: View {
+    let title: String
+    @Binding var app: InstalledApp
+    let group: AppComponentGroup
+    let isBundle: Bool
+    
     @State private var isExpanded = false
+    
+    var groupFiles: [RelatedFile] {
+        app.relatedFiles.filter { $0.group == group }
+    }
+    
+    var isAllSelected: Bool {
+        if isBundle { return app.isBundleSelected }
+        let files = groupFiles
+        return !files.isEmpty && files.allSatisfy { $0.isSelected }
+    }
+    
+    var groupSize: Int64 {
+        if isBundle { return app.bundleSize }
+        return groupFiles.reduce(Int64(0)) { $0 + $1.size }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            Button {
-                withAnimation { isExpanded.toggle() }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "square")
-                        .foregroundStyle(.secondary.opacity(0.3))
-                        .font(.system(size: 12))
-
-                    Text(name)
-                        .font(.system(size: 11, weight: .medium))
-
-                    Spacer()
-
-                    Text(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
-                        .font(.system(size: 10, design: .rounded))
-                        .foregroundStyle(.secondary)
-
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 8))
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 40)
-                .padding(.vertical, 8)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            if isExpanded {
-                ForEach(items) { item in
-                    HStack {
-                        Image(systemName: "square").foregroundStyle(.clear).font(.system(size: 12))
-                        Image(
-                            systemName: item.group == .bundle
-                                ? "app.fill"
-                                : (item.group == .preferences ? "doc.text.fill" : "folder.fill")
-                        )
-                        .foregroundStyle(.secondary)
-                        .font(.system(size: 10))
-                        Text(item.fileName)
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1).truncationMode(.middle)
-                        Spacer()
-                        Text(item.formattedSize)
-                            .font(.system(size: 9, design: .rounded))
-                            .foregroundStyle(.tertiary)
+            // Group Header Row
+            HStack(spacing: 12) {
+                Button {
+                    let newState = !isAllSelected
+                    if isBundle {
+                        app.isBundleSelected = newState
+                    } else {
+                        for i in app.relatedFiles.indices where app.relatedFiles[i].group == group {
+                            app.relatedFiles[i].isSelected = newState
+                        }
                     }
-                    .padding(.horizontal, 56)
-                    .padding(.vertical, 3)
+                } label: {
+                    Image(systemName: isAllSelected ? "checkmark.square.fill" : "square")
+                        .foregroundStyle(isAllSelected ? Theme.brand : .secondary)
+                        .font(.system(size: 14))
+                }
+                .buttonStyle(.plain)
+                
+                Text(title)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                
+                Spacer()
+                
+                Text(ByteCountFormatter.string(fromByteCount: groupSize, countStyle: .file))
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundStyle(.secondary)
+                
+                if !isBundle {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() }
+                    } label: {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.secondary.opacity(0.5))
+                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                            .frame(width: 20, height: 20)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.vertical, 8)
+            
+            // Files under group
+            if isExpanded || isBundle {
+                if isBundle {
+                    fileRow(
+                        path: app.path,
+                        fileName: (app.path as NSString).lastPathComponent,
+                        size: app.size,
+                        isSelected: app.isBundleSelected,
+                        onToggle: { app.isBundleSelected.toggle() }
+                    )
+                } else {
+                    // Because we need bindings to the array items safely
+                    ForEach(app.relatedFiles.indices, id: \.self) { i in
+                        if app.relatedFiles[i].group == group {
+                            fileRow(
+                                path: app.relatedFiles[i].path,
+                                fileName: app.relatedFiles[i].fileName,
+                                size: app.relatedFiles[i].size,
+                                isSelected: app.relatedFiles[i].isSelected,
+                                onToggle: { app.relatedFiles[i].isSelected.toggle() }
+                            )
+                        }
+                    }
                 }
             }
         }
     }
-}
-
-// MARK: - Leftovers Sheet
-struct LeftoversSheet: View {
-    let leftovers: [RelatedFile]
-    @Environment(\.dismiss) var dismiss
-
-    var body: some View {
-        VStack(spacing: 16) {
-            HStack {
-                Text("App Leftovers")
-                    .font(.system(size: 16, weight: .bold))
-                Spacer()
-                Button("Done") { dismiss() }
-                    .buttonStyle(.glass)
+    
+    private func fileRow(path: String, fileName: String, size: Int64, isSelected: Bool, onToggle: @escaping () -> Void) -> some View {
+        HStack(spacing: 12) {
+            Button(action: onToggle) {
+                Image(systemName: isSelected ? "checkmark.square.fill" : "square")
+                    .foregroundStyle(isSelected ? Theme.brand : .secondary)
+                    .font(.system(size: 14))
             }
-
-            Text("These files belong to previously uninstalled apps")
+            .buttonStyle(.plain)
+            
+            Image(nsImage: NSWorkspace.shared.icon(forFile: path))
+                .resizable()
+                .frame(width: 16, height: 16)
+            
+            Text(fileName)
                 .font(.system(size: 12))
+                .lineLimit(1)
+                .truncationMode(.middle)
+            
+            Spacer()
+            
+            Text(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
+                .font(.system(size: 12, design: .rounded))
                 .foregroundStyle(.secondary)
-
-            List(leftovers) { lf in
-                HStack {
-                    Text(lf.type.rawValue)
-                        .font(.system(size: 10, weight: .medium))
-                        .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(Theme.warning.opacity(0.15), in: RoundedRectangle(cornerRadius: 3))
-                    Text(lf.fileName).font(.system(size: 12)).lineLimit(1)
-                    Spacer()
-                    Text(lf.formattedSize).font(.system(size: 11, design: .rounded))
-                        .foregroundStyle(.secondary)
-                }
+                
+            Button {
+                NSWorkspace.shared.selectFile(path, inFileViewerRootedAtPath: "")
+            } label: {
+                Image(systemName: "magnifyingglass.circle")
+                    .foregroundStyle(.secondary)
             }
+            .buttonStyle(.plain)
+            .help("Reveal in Finder")
         }
-        .padding(20)
-        .frame(width: 500, height: 400)
+        .padding(.leading, 24)
+        .padding(.vertical, 4)
     }
 }

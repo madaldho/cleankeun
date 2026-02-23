@@ -91,12 +91,15 @@ class DiskUsageService {
 
     func analyzeDiskUsage(path: String? = nil, maxDepth: Int = 2) async -> [DiskUsageItem] {
         let targetPath = path ?? NSHomeDirectory()
-        return scanDirectory(path: targetPath, currentDepth: 0, maxDepth: maxDepth)
+        return await Task.detached(priority: .userInitiated) {
+            return self.scanDirectoryOptimized(path: targetPath, currentDepth: 0, maxDepth: maxDepth).items
+        }.value
     }
 
-    private func scanDirectory(path: String, currentDepth: Int, maxDepth: Int) -> [DiskUsageItem] {
-        guard let contents = try? fileManager.contentsOfDirectory(atPath: path) else { return [] }
+    private func scanDirectoryOptimized(path: String, currentDepth: Int, maxDepth: Int) -> (items: [DiskUsageItem], totalSize: Int64) {
+        guard let contents = try? fileManager.contentsOfDirectory(atPath: path) else { return ([], 0) }
         var items: [DiskUsageItem] = []
+        var folderTotalSize: Int64 = 0
 
         for item in contents {
             if item.hasPrefix(".") { continue } // Skip hidden files
@@ -106,20 +109,28 @@ class DiskUsageService {
             guard fileManager.fileExists(atPath: fullPath, isDirectory: &isDir) else { continue }
 
             if isDir.boolValue {
-                let size = directorySize(path: fullPath)
-                let children = currentDepth < maxDepth
-                    ? scanDirectory(path: fullPath, currentDepth: currentDepth + 1, maxDepth: maxDepth)
-                    : []
-                items.append(DiskUsageItem(name: item, path: fullPath, size: size, children: children, isDirectory: true))
+                // If we've reached max depth, just get the size without building child items
+                if currentDepth >= maxDepth {
+                    let size = directorySize(path: fullPath)
+                    folderTotalSize += size
+                    let count = (try? fileManager.contentsOfDirectory(atPath: fullPath).count) ?? 0
+                    items.append(DiskUsageItem(name: item, path: fullPath, size: size, children: [], isDirectory: true, itemCount: count))
+                } else {
+                    let result = scanDirectoryOptimized(path: fullPath, currentDepth: currentDepth + 1, maxDepth: maxDepth)
+                    folderTotalSize += result.totalSize
+                    let count = (try? fileManager.contentsOfDirectory(atPath: fullPath).count) ?? 0
+                    items.append(DiskUsageItem(name: item, path: fullPath, size: result.totalSize, children: result.items, isDirectory: true, itemCount: count))
+                }
             } else {
                 if let attrs = try? fileManager.attributesOfItem(atPath: fullPath),
                    let size = attrs[.size] as? Int64 {
+                    folderTotalSize += size
                     items.append(DiskUsageItem(name: item, path: fullPath, size: size, children: [], isDirectory: false))
                 }
             }
         }
 
-        return items.sorted { $0.size > $1.size }
+        return (items.sorted { $0.size > $1.size }, folderTotalSize)
     }
 
     private func directorySize(path: String) -> Int64 {

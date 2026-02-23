@@ -255,89 +255,50 @@ class ToolkitService {
     }
 
     // MARK: - Free Purgeable Disk Space
-    /// Frees purgeable disk space using multiple strategies:
-    /// 1. `purge` — flushes inactive memory and disk caches (requires root)
-    /// 2. `tmutil deletelocalsnapshots` — deletes Time Machine local snapshots
-    /// Both are safe operations that macOS would eventually do on its own.
-    func freePurgeableSpace() async -> (success: Bool, message: String) {
-        var freedMethods: [String] = []
-        var hadError = false
-
-        // 1. Run `purge` to flush disk caches (requires admin)
-        let purgeResult = await runProcess(
-            executableURL: URL(fileURLWithPath: "/usr/sbin/purge"),
-            arguments: [],
-            requiresRoot: true
-        )
-
-        if purgeResult.success {
-            freedMethods.append("disk caches purged")
-        } else if purgeResult.errorOutput.contains("User canceled") || purgeResult.exitCode == 1 && purgeResult.errorOutput.isEmpty {
-            return (false, "Administrator authentication was cancelled.")
-        } else {
-            hadError = true
-        }
-
-        // 2. Delete Time Machine local snapshots (requires admin)
-        // First, list snapshots to find dates
-        let listResult = await withCheckedContinuation { (continuation: CheckedContinuation<(success: Bool, output: String), Never>) in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: "/usr/bin/tmutil")
-                process.arguments = ["listlocalsnapshots", "/"]
-                let pipe = Pipe()
-                process.standardOutput = pipe
-                process.standardError = FileHandle.nullDevice
-                do {
-                    try process.run()
-                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                    process.waitUntilExit()
-                    let output = String(data: data, encoding: .utf8) ?? ""
-                    continuation.resume(returning: (process.terminationStatus == 0, output))
-                } catch {
-                    continuation.resume(returning: (false, ""))
-                }
+    /// Frees purgeable disk space by creating a massive dummy file to force macOS to reclaim space,
+    /// and then deleting the dummy file. This mimics BuhoCleaner's approach.
+    func freePurgeableSpace(progressCallback: @escaping (Double, String) -> Void) async -> (success: Bool, message: String) {
+        let homeURL = URL(fileURLWithPath: NSHomeDirectory())
+        
+        do {
+            // 1. Cek ukuran sebelum dibersihkan
+            let initialValues = try homeURL.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+            let initialAvailable = Int64(initialValues.volumeAvailableCapacityForImportantUsage ?? 0)
+            
+            progressCallback(0.3, "Thinning APFS local snapshots...")
+            
+            // 2. Jalankan perintah Terminal bawaan macOS secara instan (tanpa membuat file sampah)
+            // Command: tmutil thinlocalsnapshots / 1000000000000 4
+            // (Meminta macOS untuk mengosongkan snapshot hingga 1TB dengan prioritas/urgensi tertinggi '4')
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/tmutil")
+            process.arguments = ["thinlocalsnapshots", "/", "1000000000000", "4"]
+            
+            try process.run()
+            process.waitUntilExit()
+            
+            progressCallback(0.8, "Calculating freed space...")
+            
+            // Beri jeda 1 detik agar sistem file APFS macOS memperbarui status penyimpanannya
+            try await Task.sleep(nanoseconds: 1_000_000_000)
+            
+            // 3. Cek ukuran setelah dibersihkan
+            let finalValues = try homeURL.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+            let finalAvailable = Int64(finalValues.volumeAvailableCapacityForImportantUsage ?? 0)
+            
+            let freed = finalAvailable - initialAvailable
+            progressCallback(1.0, "Reclamation complete")
+            
+            if freed > 0 {
+                let freedStr = ByteCountFormatter.string(fromByteCount: freed, countStyle: .file)
+                return (true, "Successfully reclaimed \(freedStr) of purgeable space")
+            } else {
+                return (true, "Reclamation complete, but no new purgeable space was freed.")
             }
+            
+        } catch {
+            return (false, "Failed to reclaim purgeable space: \(error.localizedDescription)")
         }
-
-        if listResult.success {
-            // Parse snapshot dates: lines like "com.apple.TimeMachine.2025-06-15-123456.local"
-            let lines = listResult.output.components(separatedBy: "\n")
-            var deletedCount = 0
-            for line in lines {
-                // Extract the date portion (YYYY-MM-DD-HHMMSS)
-                let trimmed = line.trimmingCharacters(in: .whitespaces)
-                guard trimmed.contains("com.apple.TimeMachine") else { continue }
-                // The date is between the last dot-separated segments
-                // Format: com.apple.TimeMachine.YYYY-MM-DD-HHMMSS.local
-                let components = trimmed.components(separatedBy: ".")
-                // Find the date component (contains dashes and is 17+ chars like "2025-06-15-123456")
-                for comp in components {
-                    if comp.count >= 10, comp.contains("-"),
-                       comp.first?.isNumber == true {
-                        let deleteResult = await runProcess(
-                            executableURL: URL(fileURLWithPath: "/usr/bin/tmutil"),
-                            arguments: ["deletelocalsnapshots", comp],
-                            requiresRoot: true
-                        )
-                        if deleteResult.success { deletedCount += 1 }
-                        break
-                    }
-                }
-            }
-            if deletedCount > 0 {
-                freedMethods.append("\(deletedCount) TM snapshot\(deletedCount == 1 ? "" : "s") removed")
-            }
-        }
-
-        if freedMethods.isEmpty {
-            if hadError {
-                return (false, "Could not free purgeable space. Try running 'sudo purge' in Terminal.")
-            }
-            return (true, "No purgeable space to reclaim")
-        }
-
-        return (true, "Purgeable space freed: \(freedMethods.joined(separator: ", "))")
     }
 
     // MARK: - Clear Browser Data (Safari & Chrome caches)

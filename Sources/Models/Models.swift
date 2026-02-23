@@ -99,7 +99,7 @@ enum JunkCategory: String, CaseIterable, Identifiable {
     /// Only caches and logs — data that apps/system will regenerate.
     var isSafeToAutoSelect: Bool {
         switch self {
-        case .systemCache, .userCache, .systemLogs, .userLogs, .crashReports:
+        case .systemCache, .userCache, .systemLogs, .userLogs, .crashReports, .purgeableSpace:
             return true
         default:
             return false
@@ -166,7 +166,19 @@ struct InstalledApp: Identifiable, Hashable {
     let vendor: AppVendor
     let source: AppSource
     var relatedFiles: [RelatedFile]
-    var isSelected: Bool = false
+    var lastUsedDate: Date?
+    var isBundleSelected: Bool = false
+    var isSelected: Bool {
+        get { isBundleSelected || relatedFiles.contains { $0.isSelected } }
+        set {
+            isBundleSelected = newValue
+            for i in relatedFiles.indices { relatedFiles[i].isSelected = newValue }
+        }
+    }
+
+    var selectedSize: Int64 {
+        (isBundleSelected ? size : 0) + relatedFiles.filter(\.isSelected).reduce(0) { $0 + $1.size }
+    }
 
     // UI Grouping properties
     var bundleSize: Int64 { size }
@@ -205,6 +217,7 @@ struct RelatedFile: Identifiable, Hashable {
     let path: String
     let size: Int64
     let type: RelatedFileType
+    var isSelected: Bool = false
 
     var formattedSize: String {
         ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
@@ -229,7 +242,8 @@ enum RelatedFileType: String {
     var group: AppComponentGroup {
         switch self {
         case .preferences: return .preferences
-        case .cache, .logs, .webKit: return .library
+        case .cache: return .caches
+        case .logs, .webKit: return .library
         case .applicationSupport, .container, .savedState, .other: return .supportingFiles
         }
     }
@@ -239,6 +253,7 @@ enum AppComponentGroup: String, CaseIterable, Identifiable {
     case bundle = "Bundle"
     case library = "Library"
     case supportingFiles = "Supporting Files"
+    case caches = "Caches"
     case preferences = "Preferences"
 
     var id: String { rawValue }
@@ -322,8 +337,8 @@ enum LargeFileType: String, CaseIterable, Identifiable {
         case "mp3", "wav", "aac", "flac", "m4a", "ogg", "wma", "aiff": return .audio
         case "jpg", "jpeg", "png", "gif", "bmp", "tiff", "heic", "webp", "raw", "cr2", "nef":
             return .image
-        case "zip", "tar", "gz", "rar", "7z", "bz2", "xz": return .archive
-        case "dmg", "iso", "pkg", "app": return .diskImage
+        case "zip", "tar", "gz", "rar", "7z", "bz2", "xz", "jar", "bin", "pkg", "deb", "rpm", "cab", "ipa", "apk": return .archive
+        case "dmg", "iso", "app": return .diskImage
         case "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "pages", "numbers", "key":
             return .document
         default: return .other
@@ -527,16 +542,26 @@ struct StorageCategoryInfo: Identifiable {
 }
 
 // MARK: - Disk Usage
-struct DiskUsageItem: Identifiable {
+struct DiskUsageItem: Identifiable, Hashable {
     let id = UUID()
     let name: String
     let path: String
     let size: Int64
     var children: [DiskUsageItem]
     let isDirectory: Bool
+    var itemCount: Int = 0
+    var isSelected: Bool = false
 
     var formattedSize: String {
         ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+
+    static func == (lhs: DiskUsageItem, rhs: DiskUsageItem) -> Bool {
+        lhs.id == rhs.id
     }
 }
 

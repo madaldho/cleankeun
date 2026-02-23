@@ -13,14 +13,23 @@ class AppUninstallerService {
 
     func scanInstalledApps() async -> [InstalledApp] {
         var apps: [InstalledApp] = []
-        let appDirs = ["/Applications", "\(NSHomeDirectory())/Applications"]
+        let appDirs = ["/Applications", "\(NSHomeDirectory())/Applications", "/Applications/Utilities", "/opt/homebrew/Caskroom"]
 
         for dir in appDirs {
-            guard let contents = try? fileManager.contentsOfDirectory(atPath: dir) else { continue }
-            for item in contents where item.hasSuffix(".app") {
-                let appPath = (dir as NSString).appendingPathComponent(item)
-                if let app = getAppInfo(path: appPath) {
-                    apps.append(app)
+            guard fileManager.fileExists(atPath: dir) else { continue }
+            guard let enumerator = fileManager.enumerator(
+                at: URL(fileURLWithPath: dir),
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsPackageDescendants, .skipsHiddenFiles]
+            ) else { continue }
+            
+            while let url = enumerator.nextObject() as? URL {
+                if url.pathExtension.lowercased() == "app" {
+                    if let app = getAppInfo(path: url.path) {
+                        apps.append(app)
+                    }
+                    // Don't recurse inside the .app bundle
+                    enumerator.skipDescendants()
                 }
             }
         }
@@ -55,6 +64,18 @@ class AppUninstallerService {
         // Detect Vendor
         let vendor = determineVendor(bundleId: bundleId)
 
+        // Get last used date
+        var lastUsedDate: Date? = nil
+        let mdItem = MDItemCreate(kCFAllocatorDefault, path as CFString)
+        if let item = mdItem,
+           let date = MDItemCopyAttribute(item, kMDItemLastUsedDate) as? Date {
+            lastUsedDate = date
+        } else if let attrs = try? fileManager.attributesOfItem(atPath: path),
+                  let date = attrs[.modificationDate] as? Date {
+            // Fallback to modification date if spotlight doesn't have it
+            lastUsedDate = date
+        }
+
         return InstalledApp(
             name: name,
             bundleIdentifier: bundleId,
@@ -63,7 +84,8 @@ class AppUninstallerService {
             icon: icon,
             vendor: vendor,
             source: source,
-            relatedFiles: relatedFiles
+            relatedFiles: relatedFiles,
+            lastUsedDate: lastUsedDate
         )
     }
 
@@ -80,7 +102,7 @@ class AppUninstallerService {
         var related: [RelatedFile] = []
         let home = NSHomeDirectory()
 
-        let searchMap: [(String, RelatedFileType)] = [
+        var searchMap: [(String, RelatedFileType)] = [
             ("\(home)/Library/Application Support/\(appName)", .applicationSupport),
             ("\(home)/Library/Application Support/\(bundleId)", .applicationSupport),
             ("\(home)/Library/Caches/\(bundleId)", .cache),
@@ -95,8 +117,64 @@ class AppUninstallerService {
             ("\(home)/Library/HTTPStorages/\(bundleId)", .other),
             ("\(home)/Library/Cookies/\(bundleId).binarycookies", .other),
         ]
+        
+        // Special heavy app paths
+        if appName.contains("Android Studio") || bundleId.contains("android.studio") {
+            searchMap.append(("\(home)/Library/Android", .applicationSupport))
+            searchMap.append(("\(home)/.android", .applicationSupport))
+            searchMap.append(("\(home)/.gradle", .applicationSupport))
+            searchMap.append(("\(home)/Library/Application Support/Google/AndroidStudio", .applicationSupport))
+        }
+        
+        if appName.contains("Xcode") || bundleId == "com.apple.dt.Xcode" {
+            searchMap.append(("\(home)/Library/Developer/Xcode", .applicationSupport))
+            searchMap.append(("\(home)/Library/Developer/CoreSimulator", .applicationSupport))
+        }
+        
+        if appName.contains("Docker") || bundleId.contains("docker") {
+            searchMap.append(("\(home)/Library/Containers/com.docker.docker", .container))
+            searchMap.append(("\(home)/.docker", .applicationSupport))
+        }
 
+        // Generic Vendor fallback (e.g., com.google.Chrome -> Google/Chrome)
+        let parts = bundleId.split(separator: ".")
+        if parts.count >= 2 {
+            let possibleVendor = String(parts[1])
+            let vendorName = possibleVendor.prefix(1).capitalized + possibleVendor.dropFirst()
+            searchMap.append(("\(home)/Library/Application Support/\(vendorName)/\(appName)", .applicationSupport))
+            searchMap.append(("\(home)/Library/Caches/\(vendorName)/\(appName)", .cache))
+        }
+
+        // Special: Google Chrome
+        if appName == "Google Chrome" || bundleId == "com.google.Chrome" {
+            searchMap.append(("\(home)/Library/Application Support/Google/Chrome", .applicationSupport))
+            searchMap.append(("\(home)/Library/Caches/Google/Chrome", .cache))
+            searchMap.append(("\(home)/Library/Preferences/com.google.Keystone.Agent.plist", .preferences))
+            searchMap.append(("\(home)/Library/Preferences/Google Chrome Brand.plist", .preferences))
+            searchMap.append(("\(home)/Applications/Chrome Apps.localized", .applicationSupport))
+            // Sometimes it's localized in Indonesian as "Aplikasi Chrome"
+            searchMap.append(("\(home)/Applications/Aplikasi Chrome", .applicationSupport))
+            searchMap.append(("\(home)/Applications/Chrome Apps", .applicationSupport))
+        }
+
+        // Special: Firefox
+        if appName == "Firefox" || bundleId == "org.mozilla.firefox" {
+            searchMap.append(("\(home)/Library/Application Support/Firefox", .applicationSupport))
+            searchMap.append(("\(home)/Library/Caches/Firefox", .cache))
+            searchMap.append(("\(home)/Library/Caches/Mozilla/updates/Applications/Firefox", .cache))
+        }
+
+        // Remove duplicates and check existence
+        var uniquePaths = Set<String>()
+        var finalSearchMap = [(String, RelatedFileType)]()
         for (path, type) in searchMap {
+            if !uniquePaths.contains(path) {
+                uniquePaths.insert(path)
+                finalSearchMap.append((path, type))
+            }
+        }
+
+        for (path, type) in finalSearchMap {
             if fileManager.fileExists(atPath: path) {
                 let size = sizeOfItem(at: path)
                 related.append(RelatedFile(path: path, size: size, type: type))
@@ -108,25 +186,27 @@ class AppUninstallerService {
 
     func uninstallApp(_ app: InstalledApp) -> (success: Bool, errors: [String]) {
         var errors: [String] = []
-        // Try to remove the main app bundle first
-        var appRemoved = false
-        do {
-            try fileManager.trashItem(at: URL(fileURLWithPath: app.path), resultingItemURL: nil)
-            appRemoved = true
-        } catch {
-            errors.append("Failed to remove app: \(error.localizedDescription)")
-            return (false, errors)
-        }
-        // Clean up related files — failures here shouldn't make the whole operation "failed"
-        for rf in app.relatedFiles {
+        var success = true
+        
+        if app.isBundleSelected {
             do {
-                try fileManager.trashItem(at: URL(fileURLWithPath: rf.path), resultingItemURL: nil)
+                try fileManager.removeItem(atPath: app.path)
             } catch {
-                errors.append("Failed to remove \(rf.fileName): \(error.localizedDescription)")
+                errors.append("Failed to remove app: \(error.localizedDescription)")
+                success = false
             }
         }
-        // BUG-33: Report success if the app itself was removed, even if some related files failed
-        return (appRemoved, errors)
+        
+        for rf in app.relatedFiles where rf.isSelected {
+            do {
+                try fileManager.removeItem(atPath: rf.path)
+            } catch {
+                errors.append("Failed to remove \(rf.fileName): \(error.localizedDescription)")
+                success = false
+            }
+        }
+        
+        return (success, errors)
     }
 
     // Scan for leftover files from already-uninstalled apps
@@ -187,14 +267,16 @@ class AppUninstallerService {
 
     private func directorySize(path: String) -> Int64 {
         var total: Int64 = 0
-        if let enumerator = fileManager.enumerator(atPath: path) {
-            while let file = enumerator.nextObject() as? String {
-                let fullPath = (path as NSString).appendingPathComponent(file)
-                if let attrs = try? fileManager.attributesOfItem(atPath: fullPath),
-                    let size = attrs[.size] as? Int64
-                {
-                    total += size
-                }
+        guard let enumerator = fileManager.enumerator(
+            at: URL(fileURLWithPath: path),
+            includingPropertiesForKeys: [.totalFileAllocatedSizeKey],
+            options: [.skipsHiddenFiles]
+        ) else { return 0 }
+        
+        while let url = enumerator.nextObject() as? URL {
+            if let values = try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey]),
+               let size = values.totalFileAllocatedSize {
+                total += Int64(size)
             }
         }
         return total

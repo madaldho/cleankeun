@@ -8,28 +8,9 @@ import SwiftUI
 
 struct PerformanceView: View {
     @Environment(AppViewModel.self) var vm
-    @State private var hasStarted = false
 
     var body: some View {
-        if !hasStarted {
-            IntroView(
-                title: "Free Up RAM",
-                description:
-                    "RAM is temporary data storage that your Mac uses to execute programs and process applications. When there's not enough RAM, you can experience system slowdown or other issues.",
-                bullets: [
-                    "Experiencing Performance issues",
-                    "Lag when typing",
-                    "Taking too long to load apps or web pages",
-                ],
-                icon: "memorychip",
-                gradient: Theme.primaryGradient,
-                buttonTitle: "Start",
-                onBack: nil,
-                onStart: { hasStarted = true }
-            )
-        } else {
-            performanceContent
-        }
+        performanceContent
     }
 
     private var performanceContent: some View {
