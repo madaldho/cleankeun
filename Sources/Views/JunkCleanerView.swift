@@ -496,6 +496,21 @@ struct JunkCleanerView: View {
             } message: {
                 Text("Permanently delete \(vm.selectedJunkCount) files? This cannot be undone.")
             }
+            .alert(vm.cleanSummaryTitle, isPresented: Binding(
+                get: { vm.showCleanSummary },
+                set: { vm.showCleanSummary = $0 }
+            )) {
+                Button("OK", role: .cancel) {}
+                if vm.cleanSummaryTitle.contains("Limitations") {
+                    Button("Open System Settings") {
+                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                }
+            } message: {
+                Text(vm.cleanSummaryMessage)
+            }
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 16)

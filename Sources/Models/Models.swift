@@ -237,13 +237,14 @@ enum RelatedFileType: String {
     case savedState = "Saved State"
     case logs = "Logs"
     case webKit = "WebKit Data"
+    case library = "Library"
     case other = "Other"
 
     var group: AppComponentGroup {
         switch self {
         case .preferences: return .preferences
         case .cache: return .caches
-        case .logs, .webKit: return .library
+        case .logs, .webKit, .library: return .library
         case .applicationSupport, .container, .savedState, .other: return .supportingFiles
         }
     }

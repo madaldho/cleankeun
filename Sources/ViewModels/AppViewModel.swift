@@ -454,6 +454,10 @@ class AppViewModel {
         statusMessage = "Found \(items.count) junk files (\(ByteCountFormatter.string(fromByteCount: totalJunkSize, countStyle: .file)))"
     }
 
+    var cleanSummaryTitle = ""
+    var cleanSummaryMessage = ""
+    var showCleanSummary = false
+
     func cleanJunk() async {
         isCleaning = true
         cleaningProgress = 0
@@ -497,6 +501,15 @@ class AppViewModel {
         statusMessage = cleanMsg
         isCleaning = false
         cleaningProgress = 1.0
+
+        if result.errors.count > 0 {
+            cleanSummaryTitle = "Cleanup Completed with Limitations"
+            cleanSummaryMessage = "Freed \(ByteCountFormatter.string(fromByteCount: totalFreed, countStyle: .file)). However, \(result.errors.count) files could not be deleted because they are currently locked or in use by macOS and running apps. Please close active applications or grant Full Disk Access to Cleankeun in System Settings for deeper cleaning."
+        } else {
+            cleanSummaryTitle = "Cleanup Successful"
+            cleanSummaryMessage = "Successfully freed \(ByteCountFormatter.string(fromByteCount: totalFreed, countStyle: .file)) of junk data."
+        }
+        showCleanSummary = true
     }
 
     func toggleAllJunk(selected: Bool) {

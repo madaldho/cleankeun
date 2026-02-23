@@ -164,6 +164,26 @@ class AppUninstallerService {
             searchMap.append(("\(home)/Library/Caches/Mozilla/updates/Applications/Firefox", .cache))
         }
 
+        // Special: Visual Studio Code
+        if appName == "Visual Studio Code" || bundleId == "com.microsoft.VSCode" {
+            searchMap.append(("\(home)/.vscode", .library))
+            searchMap.append(("\(home)/.vscode-react-native", .library))
+            searchMap.append(("\(home)/Library/Application Support/Code", .applicationSupport))
+            searchMap.append(("\(home)/Library/Caches/com.microsoft.VSCode.ShipIt", .cache))
+            searchMap.append(("\(home)/Library/Caches/com.microsoft.VSCode", .cache))
+            searchMap.append(("\(home)/Library/Saved Application State/com.microsoft.VSCode.savedState", .savedState))
+            searchMap.append(("\(home)/Library/Preferences/com.microsoft.VSCode.plist", .preferences))
+            searchMap.append(("\(home)/Library/Microsoft", .library))
+        }
+
+        // Generic fallback for hidden dotfiles/folders based on app name
+        // E.g. "bun" -> "~/.bun", "npm" -> "~/.npm", "Cursor" -> "~/.cursor"
+        let lowerAppName = appName.lowercased().replacingOccurrences(of: " ", with: "")
+        if !lowerAppName.isEmpty {
+            searchMap.append(("\(home)/.\(lowerAppName)", .library))
+            searchMap.append(("\(home)/.\(lowerAppName)-cli", .library))
+        }
+
         // Remove duplicates and check existence
         var uniquePaths = Set<String>()
         var finalSearchMap = [(String, RelatedFileType)]()

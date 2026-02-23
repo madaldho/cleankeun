@@ -78,7 +78,9 @@ struct DuplicateFinderView: View {
             topToolbar
             Divider()
 
-            if vm.duplicateGroups.isEmpty && !vm.isScanning {
+            if vm.isScanning {
+                scanningState
+            } else if vm.duplicateGroups.isEmpty {
                 emptyState
             } else {
                 tabBar
@@ -103,6 +105,22 @@ struct DuplicateFinderView: View {
                 selectedGroupId = filteredGroups.first?.id
             }
         }
+    }
+
+    // MARK: - Scanning State
+    private var scanningState: some View {
+        VStack(spacing: 20) {
+            Spacer()
+            ProgressView()
+                .scaleEffect(1.5)
+            Text("Scanning for duplicates...")
+                .font(.system(size: 18, weight: .bold))
+            Text("This might take a moment depending on the folders selected.")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Top Toolbar
