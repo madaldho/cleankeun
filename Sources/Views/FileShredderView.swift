@@ -49,28 +49,57 @@ struct FileShredderView: View {
                     }
 
                     // Info banner
-                    GlassCard {
-                        HStack(spacing: 12) {
-                            ZStack {
-                                Circle()
-                                    .fill(Theme.danger.opacity(0.12))
-                                    .frame(width: 38, height: 38)
-                                Image(systemName: "shield.checkered")
-                                    .font(.system(size: 16, weight: .medium))
-                                    .foregroundStyle(Theme.dangerGradient)
+                    VStack(spacing: 12) {
+                        GlassCard {
+                            HStack(spacing: 12) {
+                                ZStack {
+                                    Circle()
+                                        .fill(Theme.danger.opacity(0.12))
+                                        .frame(width: 38, height: 38)
+                                    Image(systemName: "shield.checkered")
+                                        .font(.system(size: 16, weight: .medium))
+                                        .foregroundStyle(Theme.dangerGradient)
+                                }
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("Secure File Destruction")
+                                        .font(.system(size: 13, weight: .semibold))
+                                    Text(
+                                        "Files are overwritten \(shredPasses)x with random data before deletion to prevent recovery."
+                                    )
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(2)
+                                }
+                                Spacer()
                             }
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("Secure File Destruction")
-                                    .font(.system(size: 13, weight: .semibold))
-                                Text(
-                                    "Files are overwritten \(shredPasses)x with random data before deletion. Overwritten files cannot be recovered by any data recovery software."
-                                )
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(2)
+                        }
+                        
+                        // APFS/SSD Warning
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 14))
+                                .foregroundStyle(.yellow)
+                                .padding(.top, 2)
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("SSD & APFS Limitation")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(.primary)
+                                
+                                Text("Due to wear-leveling on modern SSDs and the copy-on-write architecture of APFS, file shredding may leave data remnants in physical blocks. Full disk encryption (FileVault) is the only guaranteed protection.")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                             Spacer()
                         }
+                        .padding(12)
+                        .background(Color.yellow.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.yellow.opacity(0.3), lineWidth: 1)
+                        )
                     }
 
                     // Drop zone
@@ -160,7 +189,7 @@ struct FileShredderView: View {
 
                         GradientButton(
                             "Shred Now", icon: "flame.fill", gradient: Theme.dangerGradient,
-                            isLoading: vm.isScanning
+                            isLoading: vm.isScanningShredder
                         ) {
                             showConfirm = true
                         }

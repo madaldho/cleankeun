@@ -12,6 +12,9 @@ class FileShredderService {
 
     /// Securely shred a file by overwriting with random data multiple times
     func shredFile(at path: String, passes: Int = 3) throws {
+        guard SecurityHelpers.isPathSafeForDeletion(path) else {
+            throw ShredError.cannotOpen
+        }
         var isDir: ObjCBool = false
         guard fileManager.fileExists(atPath: path, isDirectory: &isDir) else {
             throw ShredError.fileNotFound
@@ -22,6 +25,7 @@ class FileShredderService {
             if let enumerator = fileManager.enumerator(atPath: path) {
                 while let file = enumerator.nextObject() as? String {
                     let fullPath = (path as NSString).appendingPathComponent(file)
+                    if SecurityHelpers.isSymlink(fullPath) { continue }
                     var subDir: ObjCBool = false
                     if fileManager.fileExists(atPath: fullPath, isDirectory: &subDir), !subDir.boolValue {
                         try shredSingleFile(at: fullPath, passes: passes)
@@ -35,6 +39,10 @@ class FileShredderService {
     }
 
     private func shredSingleFile(at path: String, passes: Int) throws {
+        guard !SecurityHelpers.isSymlink(path) else {
+            try fileManager.removeItem(atPath: path)
+            return
+        }
         guard let handle = FileHandle(forUpdatingAtPath: path) else {
             throw ShredError.cannotOpen
         }

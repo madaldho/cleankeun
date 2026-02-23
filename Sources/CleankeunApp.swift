@@ -89,7 +89,7 @@ struct CleankeunApp: App {
     @MainActor
     private func performScanForCurrentView() async {
         switch vm.selectedNav {
-        case .dashboard: vm.refreshSystemInfo()
+        case .dashboard: await vm.refreshSystemInfo()
         case .junkCleaner: await vm.scanJunk()
         case .uninstaller: await vm.scanApps()
         case .largeFiles: await vm.scanLargeFiles()

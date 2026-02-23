@@ -195,7 +195,7 @@ class AppUninstallerService {
         }
 
         for (path, type) in finalSearchMap {
-            if fileManager.fileExists(atPath: path) {
+            if fileManager.fileExists(atPath: path) && !SecurityHelpers.isSymlink(path) {
                 let size = sizeOfItem(at: path)
                 related.append(RelatedFile(path: path, size: size, type: type))
             }
@@ -209,6 +209,10 @@ class AppUninstallerService {
         var success = true
         
         if app.isBundleSelected {
+            guard SecurityHelpers.isPathSafeForDeletion(app.path) else {
+                errors.append("Blocked unsafe deletion path: \(app.name)")
+                return (false, errors)
+            }
             do {
                 try fileManager.removeItem(atPath: app.path)
             } catch {
@@ -218,6 +222,10 @@ class AppUninstallerService {
         }
         
         for rf in app.relatedFiles where rf.isSelected {
+            guard SecurityHelpers.isPathSafeForDeletion(rf.path) else {
+                errors.append("Blocked unsafe deletion path: \(rf.fileName)")
+                continue
+            }
             do {
                 try fileManager.removeItem(atPath: rf.path)
             } catch {
@@ -234,19 +242,23 @@ class AppUninstallerService {
         let home = NSHomeDirectory()
         var leftovers: [RelatedFile] = []
 
-        // Get list of installed bundle IDs
-        let installedBundleIds = Set(
-            (try? FileManager.default.contentsOfDirectory(atPath: "/Applications"))?
-                .filter { $0.hasSuffix(".app") }
-                .compactMap { app -> String? in
-                    let plistPath = "/Applications/\(app)/Contents/Info.plist"
+        // Get list of installed bundle IDs from multiple locations
+        var installedBundleIds: Set<String> = []
+        let appDirs = ["/Applications", "\(home)/Applications", "/Applications/Utilities"]
+        
+        for appDir in appDirs {
+            if let contents = try? FileManager.default.contentsOfDirectory(atPath: appDir) {
+                let ids = contents.filter { $0.hasSuffix(".app") }.compactMap { app -> String? in
+                    let plistPath = "\(appDir)/\(app)/Contents/Info.plist"
                     guard let data = FileManager.default.contents(atPath: plistPath),
                         let plist = try? PropertyListSerialization.propertyList(
                             from: data, format: nil) as? [String: Any]
                     else { return nil }
                     return plist["CFBundleIdentifier"] as? String
-                } ?? []
-        )
+                }
+                installedBundleIds.formUnion(ids)
+            }
+        }
 
         // Check Application Support for orphaned folders
         let supportPath = "\(home)/Library/Application Support"

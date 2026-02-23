@@ -11,7 +11,7 @@ import IOKit
 // H5: Removed @MainActor — this service performs blocking I/O (Mach kernel calls,
 // getifaddrs, FileManager) and is called from within a Task in AppViewModel.
 // Running on @MainActor would unnecessarily block the main thread.
-class SystemMonitorService {
+actor SystemMonitorService {
     static let shared = SystemMonitorService()
 
     private var prevCPUInfo: host_cpu_load_info?
@@ -115,6 +115,12 @@ class SystemMonitorService {
             result = (result << 8) | UInt32(char)
         }
         return result
+    }
+
+    deinit {
+        if smcOpened {
+            IOServiceClose(smcConnection)
+        }
     }
 
     private func openSMC() -> Bool {
@@ -264,7 +270,7 @@ class SystemMonitorService {
     /// Returns disk total/free/used matching macOS System Settings.
     /// Uses `volumeAvailableCapacityForImportantUsage` which includes purgeable space,
     /// consistent with what macOS Settings > General > Storage displays.
-    func getDiskInfo() -> (total: Int64, free: Int64, used: Int64) {
+    nonisolated func getDiskInfo() -> (total: Int64, free: Int64, used: Int64) {
         let url = URL(fileURLWithPath: NSHomeDirectory())
         if let values = try? url.resourceValues(forKeys: [
             .volumeTotalCapacityKey,

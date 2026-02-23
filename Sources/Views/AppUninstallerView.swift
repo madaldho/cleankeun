@@ -19,6 +19,7 @@ struct AppUninstallerView: View {
     @Environment(AppViewModel.self) var vm
     @State private var selectedSidebarItem: AppUninstallSidebarItem = .all
     @State private var sortOption: AppSortOption = .size
+    @State private var showConfirm = false
     
     // Derived state for apps
     var appsForCurrentFilter: [InstalledApp] {
@@ -79,7 +80,7 @@ struct AppUninstallerView: View {
             
             Divider()
             
-            if vm.installedApps.isEmpty && !vm.isScanning {
+            if vm.installedApps.isEmpty && !vm.isScanningApps {
                 emptyView
             } else {
                 HStack(spacing: 0) {
@@ -99,7 +100,7 @@ struct AppUninstallerView: View {
             bottomBar
         }
         .onAppear {
-            if vm.installedApps.isEmpty && !vm.isScanning {
+            if vm.installedApps.isEmpty && !vm.isScanningApps {
                 Task { await vm.scanApps() }
             }
         }
@@ -113,6 +114,7 @@ struct AppUninstallerView: View {
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "chevron.left")
+                        .accessibilityLabel("Back to App List")
                     Text("Start Over")
                 }
                 .font(.system(size: 13, weight: .medium))
@@ -263,7 +265,7 @@ struct AppUninstallerView: View {
             .padding(24)
             
             // List
-            if vm.isScanning {
+            if vm.isScanningApps {
                 VStack {
                     Spacer()
                     ProgressView()
@@ -403,17 +405,7 @@ struct AppUninstallerView: View {
             .padding(.trailing, 24)
             
             Button {
-                Task {
-                    let appsToRemove = vm.installedApps.filter { $0.isSelected }
-                    for app in appsToRemove {
-                        await vm.uninstallApp(app)
-                    }
-                    
-                    let leftoversToRemove = vm.leftovers.filter { $0.isSelected }
-                    if !leftoversToRemove.isEmpty {
-                        await vm.removeLeftovers(leftoversToRemove)
-                    }
-                }
+                showConfirm = true
             } label: {
                 Text("Remove")
                     .font(.system(size: 14, weight: .medium))
@@ -424,6 +416,28 @@ struct AppUninstallerView: View {
             }
             .buttonStyle(.plain)
             .disabled(totalSelectedSize == 0)
+            .confirmationDialog(
+                "Uninstall Selected Apps?",
+                isPresented: $showConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Uninstall Permanently", role: .destructive) {
+                    Task {
+                        let appsToRemove = vm.installedApps.filter { $0.isSelected }
+                        for app in appsToRemove {
+                            await vm.uninstallApp(app)
+                        }
+                        
+                        let leftoversToRemove = vm.leftovers.filter { $0.isSelected }
+                        if !leftoversToRemove.isEmpty {
+                            await vm.removeLeftovers(leftoversToRemove)
+                        }
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This action will permanently delete \(vm.installedApps.filter { $0.isSelected }.count) apps and \(vm.leftovers.filter { $0.isSelected }.count) leftovers. This cannot be undone.")
+            }
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 16)
@@ -680,6 +694,7 @@ struct ComponentGroupRow: View {
                 NSWorkspace.shared.selectFile(path, inFileViewerRootedAtPath: "")
             } label: {
                 Image(systemName: "magnifyingglass.circle")
+                    .accessibilityLabel("Search Apps")
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)

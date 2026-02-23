@@ -78,7 +78,7 @@ struct DuplicateFinderView: View {
             topToolbar
             Divider()
 
-            if vm.isScanning {
+            if vm.isScanningDuplicates {
                 scanningState
             } else if vm.duplicateGroups.isEmpty {
                 emptyState
@@ -152,6 +152,7 @@ struct DuplicateFinderView: View {
                 showScopeSettings.toggle()
             } label: {
                 Image(systemName: "slider.horizontal.3")
+                    .accessibilityLabel("Filter Options")
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
@@ -357,14 +358,8 @@ struct DuplicateFinderView: View {
                                 .foregroundStyle(.secondary)
                         }
                         TableColumn("Last Modified") { file in
-                            if let attrs = try? FileManager.default.attributesOfItem(atPath: file.path),
-                               let date = attrs[.modificationDate] as? Date {
-                                Text(Self.previewDateFormatter.string(from: date))
-                                    .foregroundStyle(.secondary)
-                            } else {
-                                Text("--")
-                                    .foregroundStyle(.secondary)
-                            }
+                            Text(Self.previewDateFormatter.string(from: file.modificationDate))
+                                .foregroundStyle(.secondary)
                         }
                         TableColumn("Path") { file in
                             Text(file.directory.components(separatedBy: "/").dropFirst().joined(separator: " ▹ "))
@@ -401,19 +396,10 @@ struct DuplicateFinderView: View {
             Spacer()
             
             // Image Preview if image
-            if let image = NSImage(contentsOfFile: file.path) {
-                Image(nsImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(maxHeight: 160)
-                    .cornerRadius(8)
-                    .shadow(radius: 2)
-            } else {
-                Image(nsImage: NSWorkspace.shared.icon(forFile: file.path))
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 80, height: 80)
-            }
+            FilePreviewImage(filePath: file.path)
+                .frame(maxHeight: 160)
+                .cornerRadius(8)
+                .shadow(radius: 2)
             
             Text(file.fileName)
                 .font(.system(size: 14, weight: .semibold))

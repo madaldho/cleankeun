@@ -98,6 +98,18 @@ struct MenuBarView: View {
                 }
                 .padding(.horizontal, 16)
 
+                // Trash Action
+                MenuBarTrashAction(
+                    size: vm.trashTotalSize,
+                    itemCount: vm.trashItemCount,
+                    accessDenied: vm.menuBarTrashAccessDenied
+                ) {
+                    _ = await ToolkitService.shared.emptyTrash()
+                    await vm.refreshSystemInfo()
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+
                 // Quick Actions
                 HStack(spacing: 10) {
                     MenuBarAction(icon: "bolt.fill", title: "Clean", color: Theme.brand)
@@ -272,5 +284,100 @@ struct MenuBarAction: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
+    }
+}
+
+// MARK: - Menu Bar Trash Action
+struct MenuBarTrashAction: View {
+    let size: Int64
+    let itemCount: Int
+    let accessDenied: Bool
+    let action: () async -> Void
+
+    @State private var isHovered = false
+    @State private var isCleaning = false
+
+    var body: some View {
+        let isReady = accessDenied || size > 0 || itemCount > 0
+        let color = isReady ? Theme.danger : Theme.success
+        
+        Button {
+            if isReady && !isCleaning {
+                confirmAndEmpty()
+            }
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle().fill(color.opacity(0.2)).frame(width: 32, height: 32)
+                    Image(systemName: isReady ? "trash.fill" : "checkmark.seal.fill")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(color)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    if accessDenied {
+                        Text("Empty Trash")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.primary)
+                        Text("Empty via Finder (Need Access for details)")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text(isReady ? "Empty Trash" : "Trash is Empty")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.primary)
+                        Text(isReady ? "\(itemCount) items • \(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))" : "System is clean")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Spacer()
+                
+                if isCleaning {
+                    ProgressView().controlSize(.small)
+                } else if isReady {
+                    Text("Clean")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 4)
+                        .background(color)
+                        .clipShape(Capsule())
+                }
+            }
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(isHovered && isReady ? AnyShapeStyle(color.opacity(0.1)) : AnyShapeStyle(.quaternary))
+                    .glassEffect(.regular, in: .rect(cornerRadius: 14))
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+    }
+    
+    private func confirmAndEmpty() {
+        let alert = NSAlert()
+        alert.messageText = "Empty Trash?"
+        if accessDenied {
+            alert.informativeText = "Are you sure you want to empty the Trash via Finder? This cannot be undone."
+        } else {
+            alert.informativeText = "Are you sure you want to permanently delete \(itemCount) items (\(ByteCountFormatter.string(fromByteCount: size, countStyle: .file)))? This cannot be undone."
+        }
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Empty Trash")
+        alert.addButton(withTitle: "Cancel")
+        // Style the destructive button
+        alert.buttons.first?.hasDestructiveAction = true
+        
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            isCleaning = true
+            Task {
+                await action()
+                isCleaning = false
+            }
+        }
     }
 }

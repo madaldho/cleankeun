@@ -11,7 +11,21 @@ import SwiftUI
 @Observable
 class AppViewModel {
     var selectedNav: NavigationItem = .dashboard
-    var isScanning = false
+    
+    // Specific scanning states (BUG-40: Split global isScanning)
+    var isScanningJunk = false
+    var isScanningApps = false
+    var isScanningLargeFiles = false
+    var isScanningDuplicates = false
+    var isScanningStartup = false
+    var isScanningDiskUsage = false
+    var isScanningMemory = false
+    var isScanningShredder = false
+    
+    var isScanning: Bool {
+        isScanningJunk || isScanningApps || isScanningLargeFiles || isScanningDuplicates || isScanningStartup || isScanningDiskUsage || isScanningMemory || isScanningShredder
+    }
+
     var scanProgress: Double = 0
     var statusMessage = "Ready"
 
@@ -72,7 +86,7 @@ class AppViewModel {
 
     // Disk Usage
     var diskUsageItems: [DiskUsageItem] = []
-    var currentDiskPath: String = NSHomeDirectory()
+    var currentDiskPath: String = ""
     var availableVolumes: [VolumeInfo] = []
     private var diskUsageCache: [String: [DiskUsageItem]] = [:]
 
@@ -100,6 +114,11 @@ class AppViewModel {
     // Monitor task handle for structured concurrency
     private var monitorTask: Task<Void, Never>?
     private var monitorRefCount = 0
+
+    // Trash Info
+    var trashItemCount: Int = 0
+    var trashTotalSize: Int64 = 0
+    var menuBarTrashAccessDenied: Bool = false
 
     // MARK: - Health Score (Feature 2)
     /// System health score from 0-100. Higher = healthier.
@@ -273,13 +292,13 @@ class AppViewModel {
         var macOSSize: Int64 = 0
         var macOSSubs: [(String, Int64)] = []
         let volumeNames = [
-            ("disk3s1", "macOS Volume"),
-            ("disk3s6", "VM Swap"),
-            ("disk3s2", "Preboot"),
-            ("disk3s3", "Recovery"),
+            ("/", "macOS Volume"),
+            ("/System/Volumes/VM", "VM Swap"),
+            ("/System/Volumes/Preboot", "Preboot"),
+            ("/System/Volumes/Recovery", "Recovery")
         ]
-        for (disk, label) in volumeNames {
-            let size = Self.diskutilVolumeUsedSpace(disk: disk)
+        for (diskPath, label) in volumeNames {
+            let size = Self.diskutilVolumeUsedSpace(disk: diskPath)
             if size > 0 {
                 macOSSubs.append((label, size))
                 macOSSize += size
@@ -385,12 +404,12 @@ class AppViewModel {
     func startMonitoring() {
         monitorRefCount += 1
         guard monitorTask == nil else { return }
-        refreshSystemInfo()
+        Task { await refreshSystemInfo() }
         monitorTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(3))
                 guard !Task.isCancelled else { break }
-                self?.refreshSystemInfo()
+                await self?.refreshSystemInfo()
             }
         }
     }
@@ -402,14 +421,20 @@ class AppViewModel {
         monitorTask = nil
     }
 
-    func refreshSystemInfo() {
+    func refreshSystemInfo() async {
         let disk = SystemMonitorService.shared.getDiskInfo()
         diskTotal = disk.total
         diskUsed = disk.used
         diskFree = disk.free
         memoryInfo = MemoryService.shared.getMemoryInfo()
-        cpuInfo = SystemMonitorService.shared.getCPUInfo()
-        networkInfo = SystemMonitorService.shared.getNetworkSpeed()
+        cpuInfo = await SystemMonitorService.shared.getCPUInfo()
+        networkInfo = await SystemMonitorService.shared.getNetworkSpeed()
+        
+        let trashInfo = ToolkitService.shared.getTrashInfo()
+        trashItemCount = trashInfo.itemCount
+        trashTotalSize = trashInfo.totalSize
+        menuBarTrashAccessDenied = trashInfo.accessDenied
+        
         // Scan storage categories lazily in the background (only once)
         if storageCategories.isEmpty && !storageScanInProgress {
             storageScanInProgress = true
@@ -427,7 +452,7 @@ class AppViewModel {
 
     // MARK: - Junk Cleaner
     func scanJunk() async {
-        isScanning = true; scanProgress = 0
+        isScanningJunk = true; scanProgress = 0
         scanningCurrentPath = ""
         scanningFilesFound = 0
         statusMessage = "Scanning for junk files..."
@@ -449,7 +474,7 @@ class AppViewModel {
         for item in items { grouped[item.category, default: []].append(item) }
         junkByCategory = grouped
         updateJunkSelection()
-        isScanning = false; scanProgress = 1.0
+        isScanningJunk = false; scanProgress = 1.0
         scanningCurrentPath = ""
         statusMessage = "Found \(items.count) junk files (\(ByteCountFormatter.string(fromByteCount: totalJunkSize, countStyle: .file)))"
     }
@@ -546,37 +571,37 @@ class AppViewModel {
 
     // MARK: - Apps
     func scanApps() async {
-        isScanning = true; statusMessage = "Scanning applications..."
+        isScanningApps = true; statusMessage = "Scanning applications..."
         installedApps = await AppUninstallerService.shared.scanInstalledApps()
         leftovers = await AppUninstallerService.shared.scanLeftovers()
-        isScanning = false
+        isScanningApps = false
         statusMessage = "Found \(installedApps.count) apps, \(leftovers.count) leftovers"
     }
 
     func uninstallApp(_ app: InstalledApp) async {
-        isScanning = true; statusMessage = "Uninstalling \(app.name)..."
+        isScanningApps = true; statusMessage = "Uninstalling \(app.name)..."
         let result = AppUninstallerService.shared.uninstallApp(app)
         statusMessage = result.success ? "\(app.name) removed" : "Failed"
         if result.success { await scanApps() }
-        isScanning = false
+        isScanningApps = false
     }
 
     func removeLeftovers(_ files: [RelatedFile]) async {
-        isScanning = true; statusMessage = "Removing leftovers..."
+        isScanningApps = true; statusMessage = "Removing leftovers..."
         for file in files {
             try? FileManager.default.removeItem(atPath: file.path)
         }
         await scanApps()
-        isScanning = false
+        isScanningApps = false
     }
 
     // MARK: - Large Files
     func scanLargeFiles() async {
-        isScanning = true; statusMessage = "Scanning large files..."
+        isScanningLargeFiles = true; statusMessage = "Scanning large files..."
         // Scan ALL files >= 1MB with no type filter — store full results
         allScannedLargeFiles = await LargeFileScannerService.shared.scanLargeFiles(minimumSize: 1 * 1024 * 1024, fileType: nil)
         applyLargeFileFilters()
-        isScanning = false
+        isScanningLargeFiles = false
         let total = largeFiles.reduce(0) { $0 + $1.size }
         statusMessage = "Found \(largeFiles.count) files (\(ByteCountFormatter.string(fromByteCount: total, countStyle: .file)))"
     }
@@ -604,7 +629,7 @@ class AppViewModel {
     }
 
     func deleteLargeFiles() async {
-        isScanning = true
+        isScanningLargeFiles = true
         let result = LargeFileScannerService.shared.deleteFiles(largeFiles)
         let deleteMsg = "Permanently deleted \(result.deleted) files, freed \(ByteCountFormatter.string(fromByteCount: result.freedSpace, countStyle: .file))"
         // Remove deleted files from allScannedLargeFiles too
@@ -612,27 +637,27 @@ class AppViewModel {
         allScannedLargeFiles.removeAll { deletedPaths.contains($0.path) }
         applyLargeFileFilters()
         statusMessage = deleteMsg
-        isScanning = false
+        isScanningLargeFiles = false
     }
 
     // MARK: - Duplicates
     func scanDuplicates() async {
-        isScanning = true; statusMessage = "Finding duplicates..."
+        isScanningDuplicates = true; statusMessage = "Finding duplicates..."
         let paths = duplicateScanPaths.filter { $0.value }.map { $0.key }
         duplicateGroups = await DuplicateFinderService.shared.scanForDuplicates(paths: paths, includeHidden: duplicateScanHidden)
         totalDuplicatesSize = duplicateGroups.reduce(0) { $0 + $1.wastedSpace }
-        isScanning = false
+        isScanningDuplicates = false
         statusMessage = "Found \(duplicateGroups.count) groups (\(ByteCountFormatter.string(fromByteCount: totalDuplicatesSize, countStyle: .file)) wasted)"
     }
 
     func deleteDuplicates() async {
-        isScanning = true
+        isScanningDuplicates = true
         let all = duplicateGroups.flatMap(\.files).filter(\.isSelected)
         let result = DuplicateFinderService.shared.deleteFiles(all)
         let deleteMsg = "Permanently deleted \(result.deleted) duplicates, freed \(ByteCountFormatter.string(fromByteCount: result.freedSpace, countStyle: .file))"
         await scanDuplicates()
         statusMessage = deleteMsg
-        isScanning = false
+        isScanningDuplicates = false
     }
 
     /// Smart Select: for each duplicate group, select all copies except the first (original)
@@ -655,12 +680,12 @@ class AppViewModel {
 
     // MARK: - Memory
     func optimizeMemory() async {
-        isScanning = true; statusMessage = "Optimizing memory..."
+        isScanningMemory = true; statusMessage = "Optimizing memory..."
         let result = await MemoryService.shared.optimizeMemory()
         memoryInfo = result.after
         let freed = Int64(result.before.used) - Int64(result.after.used)
         statusMessage = freed > 0 ? "Freed \(ByteCountFormatter.string(fromByteCount: freed, countStyle: .memory))" : "Memory optimized"
-        isScanning = false
+        isScanningMemory = false
     }
 
     // MARK: - Startup
@@ -682,10 +707,10 @@ class AppViewModel {
     }
 
     func analyzeDiskUsage() async {
-        isScanning = true; statusMessage = "Analyzing disk..."
+        isScanningDiskUsage = true; statusMessage = "Analyzing disk..."
         diskUsageItems = await DiskUsageService.shared.analyzeDiskUsage(path: currentDiskPath)
         diskUsageCache[currentDiskPath] = diskUsageItems
-        isScanning = false; statusMessage = "Analysis complete"
+        isScanningDiskUsage = false; statusMessage = "Analysis complete"
     }
 
     func navigateDiskUsage(to path: String, withChildren children: [DiskUsageItem]? = nil) async {
@@ -703,7 +728,7 @@ class AppViewModel {
     }
 
     func deleteDiskItems(paths: Set<String>) async {
-        isScanning = true
+        isScanningStartup = true
         statusMessage = "Deleting items..."
         
         var freedSpace: Int64 = 0
@@ -727,7 +752,7 @@ class AppViewModel {
         await analyzeDiskUsage()
         
         statusMessage = "Permanently deleted \(deletedCount) items, freed \(ByteCountFormatter.string(fromByteCount: freedSpace, countStyle: .file))"
-        isScanning = false
+        isScanningStartup = false
     }
 
     // MARK: - Shredder
@@ -745,7 +770,7 @@ class AppViewModel {
     }
 
     func shredAllItems(passes: Int = 3) async {
-        isScanning = true; statusMessage = "Securely shredding files..."
+        isScanningShredder = true; statusMessage = "Securely shredding files..."
         var errors: [String] = []
         for item in shredItems {
             do {
@@ -755,7 +780,7 @@ class AppViewModel {
             }
         }
         shredItems.removeAll()
-        isScanning = false
+        isScanningShredder = false
         statusMessage = errors.isEmpty ? "All files securely shredded" : "Shredded with \(errors.count) errors"
     }
 

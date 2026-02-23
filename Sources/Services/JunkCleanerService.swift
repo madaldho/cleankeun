@@ -236,6 +236,7 @@ class JunkCleanerService {
             if file.lowercased().hasSuffix(".dmg") { continue }
 
             let fullPath = (path as NSString).appendingPathComponent(file)
+            if SecurityHelpers.isSymlink(fullPath) { continue }
             let size = sizeOfItem(atPath: fullPath)
             if size > 0 {
                 items.append(JunkItem(
@@ -310,6 +311,7 @@ class JunkCleanerService {
         guard let contents = try? fileManager.contentsOfDirectory(atPath: path) else { return items }
         for file in contents where file.lowercased().hasSuffix(".dmg") {
             let fullPath = (path as NSString).appendingPathComponent(file)
+            if SecurityHelpers.isSymlink(fullPath) { continue }
             if let attrs = try? fileManager.attributesOfItem(atPath: fullPath),
                let fileSize = attrs[.size] as? Int64,
                fileSize > 0 {
@@ -348,6 +350,7 @@ class JunkCleanerService {
             if file.hasPrefix(".") { continue }
 
             let fullPath = (path as NSString).appendingPathComponent(file)
+            if SecurityHelpers.isSymlink(fullPath) { continue }
 
             // Skip excluded prefix paths
             if !excludePrefixes.isEmpty {
@@ -373,6 +376,7 @@ class JunkCleanerService {
 
     // MARK: - Size of Item (file or directory, recursive)
     private func sizeOfItem(atPath path: String) -> Int64 {
+        if SecurityHelpers.isSymlink(path) { return 0 }
         var isDir: ObjCBool = false
         guard fileManager.fileExists(atPath: path, isDirectory: &isDir) else { return 0 }
         
@@ -411,6 +415,10 @@ class JunkCleanerService {
 
         for (index, item) in selected.enumerated() {
             onProgress(index, total, freedSpace, item.fileName)
+            guard SecurityHelpers.isPathSafeForDeletion(item.path) else {
+                errors.append("Blocked unsafe deletion path: \(item.fileName)")
+                continue
+            }
             do {
                 try fileManager.removeItem(atPath: item.path)
                 deleted += 1

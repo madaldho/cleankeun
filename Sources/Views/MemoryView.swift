@@ -21,7 +21,7 @@ struct PerformanceView: View {
                     Spacer()
                     GradientButton(
                         "Optimize RAM", icon: "bolt.fill", gradient: Theme.primaryGradient,
-                        isLoading: vm.isScanning
+                        isLoading: vm.isScanningMemory
                     ) {
                         Task { await vm.optimizeMemory() }
                     }

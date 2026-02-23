@@ -25,7 +25,7 @@ struct LargeFilesView: View {
                         Spacer()
                         GradientButton(
                             "Scan", icon: "magnifyingglass", gradient: Theme.primaryGradient,
-                            isLoading: vm.isScanning
+                            isLoading: vm.isScanningLargeFiles
                         ) {
                             Task { await vm.scanLargeFiles() }
                         }
@@ -114,7 +114,7 @@ struct LargeFilesView: View {
                         }
                     }
 
-                    if vm.largeFiles.isEmpty && !vm.isScanning {
+                    if vm.largeFiles.isEmpty && !vm.isScanningLargeFiles {
                         EmptyState(
                             icon: "doc.badge.arrow.up", title: "No Large Files",
                             subtitle: vm.allScannedLargeFiles.isEmpty
@@ -187,7 +187,7 @@ struct LargeFilesView: View {
             }
         }
         .onAppear {
-            if vm.allScannedLargeFiles.isEmpty && !vm.isScanning {
+            if vm.allScannedLargeFiles.isEmpty && !vm.isScanningLargeFiles {
                 Task { await vm.scanLargeFiles() }
             }
         }
@@ -305,6 +305,7 @@ struct LargeFileCard: View {
                 NSWorkspace.shared.selectFile(file.path, inFileViewerRootedAtPath: "")
             } label: {
                 Image(systemName: "folder")
+                    .accessibilityLabel("Choose Folder to Scan")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .frame(width: 30, height: 30)

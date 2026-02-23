@@ -26,6 +26,7 @@ class LargeFileScannerService {
             ) else { continue }
 
             while let url = enumerator.nextObject() as? URL {
+                if SecurityHelpers.isSymlink(url.path) { continue }
                 do {
                     let rv = try url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey, .isDirectoryKey])
                     if rv.isDirectory == true { continue }
@@ -47,6 +48,10 @@ class LargeFileScannerService {
     func deleteFiles(_ files: [LargeFile]) -> (deleted: Int, freedSpace: Int64, errors: [String]) {
         var deleted = 0; var freedSpace: Int64 = 0; var errors: [String] = []
         for file in files where file.isSelected {
+            guard SecurityHelpers.isPathSafeForDeletion(file.path) else {
+                errors.append("Blocked unsafe deletion path: \(file.fileName)")
+                continue
+            }
             do {
                 try fileManager.removeItem(atPath: file.path)
                 deleted += 1; freedSpace += file.size

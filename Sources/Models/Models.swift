@@ -32,9 +32,6 @@ struct JunkItem: Identifiable, Hashable {
         self.browserApp = browserApp
         self.isSelected = isSelected
     }
-
-    func hash(into hasher: inout Hasher) { hasher.combine(id) }
-    static func == (lhs: JunkItem, rhs: JunkItem) -> Bool { lhs.id == rhs.id && lhs.isSelected == rhs.isSelected }
 }
 
 /// Known browser apps for per-browser cache grouping
@@ -73,6 +70,10 @@ enum BrowserApp: String, CaseIterable, Identifiable {
         case .edge: return "globe"
         case .opera: return "globe"
         }
+    }
+    
+    var isInstalled: Bool {
+        FileManager.default.fileExists(atPath: appPath)
     }
 }
 
@@ -207,9 +208,6 @@ struct InstalledApp: Identifiable, Hashable {
     var formattedTotalSize: String {
         ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file)
     }
-
-    func hash(into hasher: inout Hasher) { hasher.combine(id) }
-    static func == (lhs: InstalledApp, rhs: InstalledApp) -> Bool { lhs.id == rhs.id }
 }
 
 struct RelatedFile: Identifiable, Hashable {
@@ -225,8 +223,6 @@ struct RelatedFile: Identifiable, Hashable {
 
     var fileName: String { (path as NSString).lastPathComponent }
     var group: AppComponentGroup { type.group }
-    func hash(into hasher: inout Hasher) { hasher.combine(id) }
-    static func == (lhs: RelatedFile, rhs: RelatedFile) -> Bool { lhs.id == rhs.id }
 }
 
 enum RelatedFileType: String {
@@ -291,9 +287,6 @@ struct LargeFile: Identifiable, Hashable {
     }
 
     var fileName: String { (path as NSString).lastPathComponent }
-
-    func hash(into hasher: inout Hasher) { hasher.combine(id) }
-    static func == (lhs: LargeFile, rhs: LargeFile) -> Bool { lhs.id == rhs.id }
 }
 
 enum LargeFileType: String, CaseIterable, Identifiable {
@@ -369,11 +362,10 @@ struct DuplicateFile: Identifiable, Hashable {
     let id = UUID()
     let path: String
     let size: Int64
+    let modificationDate: Date
     var isSelected: Bool = false
     var fileName: String { (path as NSString).lastPathComponent }
     var directory: String { (path as NSString).deletingLastPathComponent }
-    func hash(into hasher: inout Hasher) { hasher.combine(id) }
-    static func == (lhs: DuplicateFile, rhs: DuplicateFile) -> Bool { lhs.id == rhs.id }
 }
 
 // MARK: - Memory Info
@@ -453,9 +445,6 @@ struct StartupItem: Identifiable, Hashable {
         case .loginItem: return .medium
         }
     }
-
-    func hash(into hasher: inout Hasher) { hasher.combine(id) }
-    static func == (lhs: StartupItem, rhs: StartupItem) -> Bool { lhs.id == rhs.id }
 }
 
 enum StartupType: String, CaseIterable, Identifiable {
@@ -555,14 +544,6 @@ struct DiskUsageItem: Identifiable, Hashable {
 
     var formattedSize: String {
         ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
-    }
-
-    func hash(into hasher: inout Hasher) {
-        hasher.combine(id)
-    }
-
-    static func == (lhs: DiskUsageItem, rhs: DiskUsageItem) -> Bool {
-        lhs.id == rhs.id
     }
 }
 

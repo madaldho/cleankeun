@@ -13,7 +13,7 @@ struct JunkCleanerView: View {
 
     var body: some View {
         ZStack {
-            if vm.isScanning {
+            if vm.isScanningJunk {
                 scanningView
             } else if vm.junkItems.isEmpty {
                 emptyView
@@ -108,7 +108,7 @@ struct JunkCleanerView: View {
                     vm.selectedJunkCount = 0
                     vm.selectedJunkSize = 0
                     selectedCategory = nil
-                    vm.isScanning = false
+                    vm.isScanningJunk = false
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "chevron.left")
@@ -130,6 +130,7 @@ struct JunkCleanerView: View {
                     Task { await vm.scanJunk() }
                 } label: {
                     Image(systemName: "arrow.clockwise")
+                        .accessibilityLabel("Rescan Junk")
                         .font(.system(size: 14))
                         .foregroundStyle(.secondary)
                 }

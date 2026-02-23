@@ -30,6 +30,7 @@ class DuplicateFinderService {
             ) else { continue }
 
             while let url = enumerator.nextObject() as? URL {
+                if SecurityHelpers.isSymlink(url.path) { continue }
                 do {
                     let rv = try url.resourceValues(forKeys: [.fileSizeKey, .isDirectoryKey])
                     if rv.isDirectory == true { continue }
@@ -58,7 +59,11 @@ class DuplicateFinderService {
                 }
                 for (fullHash, verifiedDups) in fullHashMap where verifiedDups.count > 1 {
                     let ft = LargeFileType.detect(from: verifiedDups[0])
-                    let files = verifiedDups.map { DuplicateFile(path: $0, size: fileSize) }
+                    let files = verifiedDups.compactMap { path -> DuplicateFile? in
+                        let attrs = try? FileManager.default.attributesOfItem(atPath: path)
+                        let date = attrs?[.modificationDate] as? Date ?? Date()
+                        return DuplicateFile(path: path, size: fileSize, modificationDate: date)
+                    }
                     groups.append(DuplicateGroup(hash: fullHash, fileSize: fileSize, fileType: ft, files: files))
                 }
             }
@@ -96,6 +101,10 @@ class DuplicateFinderService {
     func deleteFiles(_ files: [DuplicateFile]) -> (deleted: Int, freedSpace: Int64, errors: [String]) {
         var deleted = 0; var freedSpace: Int64 = 0; var errors: [String] = []
         for file in files where file.isSelected {
+            guard SecurityHelpers.isPathSafeForDeletion(file.path) else {
+                errors.append("Blocked unsafe deletion path: \(file.fileName)")
+                continue
+            }
             do {
                 try fileManager.removeItem(atPath: file.path)
                 deleted += 1; freedSpace += file.size

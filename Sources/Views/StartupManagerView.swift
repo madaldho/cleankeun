@@ -96,7 +96,7 @@ struct StartupManagerView: View {
             }
             GradientButton(
                 "Refresh", icon: "arrow.clockwise", gradient: Theme.primaryGradient,
-                isLoading: vm.isScanning
+                isLoading: vm.isScanningStartup
             ) {
                 vm.scanStartupItems()
             }

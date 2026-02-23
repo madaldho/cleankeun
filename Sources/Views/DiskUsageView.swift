@@ -15,6 +15,7 @@ struct DiskUsageView: View {
     @State private var forwardHistory: [String] = []
     @State private var selectedPaths: Set<String> = []
     @State private var selectedVolume: VolumeInfo? = nil
+    @State private var showConfirm = false
 
     private var totalSizeOfItems: Int64 {
         vm.diskUsageItems.reduce(0) { $0 + $1.size }
@@ -26,7 +27,7 @@ struct DiskUsageView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if vm.diskUsageItems.isEmpty && !vm.isScanning {
+            if vm.currentDiskPath.isEmpty {
                 emptyStartScreen
             } else {
                 topToolbar
@@ -117,9 +118,9 @@ struct DiskUsageView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 22))
                 }
                 .buttonStyle(.plain)
-                .disabled(vm.isScanning)
+                .disabled(vm.isScanningDiskUsage)
                 
-                if vm.isScanning {
+                if vm.isScanningDiskUsage {
                     ProgressView()
                         .scaleEffect(0.8)
                 }
@@ -156,6 +157,7 @@ struct DiskUsageView: View {
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "chevron.left")
+                        .accessibilityLabel("Go Up One Directory")
                     Text("Start Over")
                 }
                 .font(.system(size: 13, weight: .medium))
@@ -230,7 +232,7 @@ struct DiskUsageView: View {
             breadcrumbView
             Divider()
             
-            if vm.isScanning {
+            if vm.isScanningDiskUsage {
                 VStack {
                     Spacer()
                     ProgressView()
@@ -311,11 +313,7 @@ struct DiskUsageView: View {
             .padding(.trailing, 20)
             
             Button {
-                let pathsToDelete = selectedPaths
-                Task {
-                    await vm.deleteDiskItems(paths: pathsToDelete)
-                    selectedPaths.removeAll()
-                }
+                showConfirm = true
             } label: {
                 Text("Remove")
                     .font(.system(size: 14, weight: .medium))
@@ -326,6 +324,22 @@ struct DiskUsageView: View {
             }
             .buttonStyle(.plain)
             .disabled(totalSelectedBytes == 0)
+            .confirmationDialog(
+                "Delete Selected Items?",
+                isPresented: $showConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Delete Permanently", role: .destructive) {
+                    let pathsToDelete = selectedPaths
+                    Task {
+                        await vm.deleteDiskItems(paths: pathsToDelete)
+                        selectedPaths.removeAll()
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This action will permanently delete \(selectedPaths.count) items (\(ByteCountFormatter.string(fromByteCount: totalSelectedBytes, countStyle: .file))). This cannot be undone.")
+            }
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 16)

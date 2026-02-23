@@ -245,9 +245,9 @@ class StartupManagerService {
 
         do {
             try process.run()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
             process.waitUntilExit()
 
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
             guard let output = String(data: data, encoding: .utf8), !output.isEmpty else {
                 return []
             }
@@ -405,10 +405,11 @@ class StartupManagerService {
             DispatchQueue.global(qos: .userInitiated).async {
                 if item.isEnabled {
                     // Remove login item
+                    let safeName = SecurityHelpers.sanitizeForAppleScript(item.name)
                     let script = """
                     tell application "System Events"
                         try
-                            delete login item "\(item.name)"
+                            delete login item "\(safeName)"
                             return "ok"
                         on error
                             return "fail"
@@ -432,11 +433,12 @@ class StartupManagerService {
                     }
                 } else {
                     // Add login item back
-                    let itemPath = item.path.replacingOccurrences(of: "\"", with: "\\\"")
+                    let itemPath = SecurityHelpers.sanitizeForAppleScript(item.path)
+                    let itemName = SecurityHelpers.sanitizeForAppleScript(item.name)
                     let script = """
                     tell application "System Events"
                         try
-                            make login item at end with properties {path:"\(itemPath)", hidden:false, name:"\(item.name)"}
+                            make login item at end with properties {path:"\(itemPath)", hidden:false, name:"\(itemName)"}
                             return "ok"
                         on error
                             return "fail"
@@ -468,12 +470,11 @@ class StartupManagerService {
         await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
             DispatchQueue.global(qos: .userInitiated).async {
                 // Build a shell command that modifies the plist and runs launchctl
-                let escapedPath = item.path.replacingOccurrences(of: "'", with: "'\\''")
+                let safePathShell = SecurityHelpers.sanitizeForShell(item.path)
                 let disabledStr = newDisabledValue ? "true" : "false"
                 let launchctlCmd = newDisabledValue ? "unload -w" : "load -w"
-                let shellCmd = "/usr/bin/defaults write '\(escapedPath)' Disabled -bool \(disabledStr) && /bin/launchctl \(launchctlCmd) '\(escapedPath)'"
-                let escapedShellCmd = shellCmd.replacingOccurrences(of: "\\", with: "\\\\")
-                    .replacingOccurrences(of: "\"", with: "\\\"")
+                let shellCmd = "/usr/bin/defaults write \(safePathShell) Disabled -bool \(disabledStr) && /bin/launchctl \(launchctlCmd) \(safePathShell)"
+                let escapedShellCmd = SecurityHelpers.sanitizeForAppleScript(shellCmd)
                 let script = "do shell script \"\(escapedShellCmd)\" with administrator privileges"
 
                 let process = Process()

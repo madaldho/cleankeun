@@ -9,19 +9,19 @@ import Foundation
 class ToolkitService {
     static let shared = ToolkitService()
 
-    // Cached values — these never change during app runtime
-    lazy var cachedMacOSVersion: String = {
-        let version = ProcessInfo.processInfo.operatingSystemVersion
-        return "macOS \(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
-    }()
+    let cachedMacOSVersion: String
+    let cachedMachineModel: String
 
-    lazy var cachedMachineModel: String = {
+    private init() {
+        let version = ProcessInfo.processInfo.operatingSystemVersion
+        self.cachedMacOSVersion = "macOS \(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
+        
         var size: Int = 0
         sysctlbyname("hw.model", nil, &size, nil, 0)
         var model = [CChar](repeating: 0, count: size)
         sysctlbyname("hw.model", &model, &size, nil, 0)
-        return String(cString: model)
-    }()
+        self.cachedMachineModel = String(cString: model)
+    }
 
     // MARK: - Async Process Helper (BUG-07, BUG-36)
     /// Runs a subprocess off the main thread using `DispatchQueue.global(qos: .userInitiated)`.
@@ -42,23 +42,24 @@ class ToolkitService {
     private func runProcess(
         executableURL: URL,
         arguments: [String],
-        requiresRoot: Bool = false
+        requiresRoot: Bool = false,
+        timeout: TimeInterval = 60.0
     ) async -> (success: Bool, exitCode: Int32, errorOutput: String) {
         await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
+            var continuationConsumed = false
+            let lock = NSLock()
+            
+            let workItem = DispatchWorkItem {
                 let process = Process()
 
                 if requiresRoot {
                     // Build the shell command string with proper escaping
                     let cmdParts = [executableURL.path] + arguments
-                    let escapedCmd = cmdParts.map { arg in
-                        // Escape single quotes for AppleScript string
-                        arg.replacingOccurrences(of: "\\", with: "\\\\")
-                           .replacingOccurrences(of: "\"", with: "\\\"")
-                    }.joined(separator: " ")
-                    let script = "do shell script \"\(escapedCmd)\" with administrator privileges"
+                    let safeCmdParts = cmdParts.map { SecurityHelpers.sanitizeForShell($0) }
+                    let escapedCmd = safeCmdParts.joined(separator: " ")
+                    let scriptStr = "do shell script \"\(SecurityHelpers.sanitizeForAppleScript(escapedCmd))\" with administrator privileges"
                     process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-                    process.arguments = ["-e", script]
+                    process.arguments = ["-e", scriptStr]
                 } else {
                     process.executableURL = executableURL
                     process.arguments = arguments
@@ -68,22 +69,43 @@ class ToolkitService {
                 let errorPipe = Pipe()
                 process.standardError = errorPipe
 
+                // Set up a termination handler for the timeout
+                let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global())
+                timer.schedule(deadline: .now() + timeout)
+                timer.setEventHandler {
+                    if process.isRunning {
+                        process.terminate()
+                    }
+                }
+                timer.resume()
+
                 do {
                     try process.run()
-                    // Read stderr BEFORE waitUntilExit to avoid pipe buffer deadlock.
-                    // If the subprocess writes > 64KB to stderr while we're blocked on
-                    // waitUntilExit, both sides will deadlock.
                     let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
                     process.waitUntilExit()
-                    let errorOutput = String(data: errorData, encoding: .utf8) ?? ""
-                    continuation.resume(
-                        returning: (
-                            process.terminationStatus == 0, process.terminationStatus, errorOutput
-                        ))
+                    timer.cancel()
+                    
+                    let errorString = String(data: errorData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    let success = process.terminationStatus == 0
+                    
+                    lock.lock()
+                    if !continuationConsumed {
+                        continuationConsumed = true
+                        continuation.resume(returning: (success, process.terminationStatus, errorString))
+                    }
+                    lock.unlock()
                 } catch {
-                    continuation.resume(returning: (false, -1, error.localizedDescription))
+                    timer.cancel()
+                    lock.lock()
+                    if !continuationConsumed {
+                        continuationConsumed = true
+                        continuation.resume(returning: (false, -1, error.localizedDescription))
+                    }
+                    lock.unlock()
                 }
             }
+            
+            DispatchQueue.global(qos: .userInitiated).async(execute: workItem)
         }
     }
 
@@ -270,12 +292,11 @@ class ToolkitService {
             // 2. Jalankan perintah Terminal bawaan macOS secara instan (tanpa membuat file sampah)
             // Command: tmutil thinlocalsnapshots / 1000000000000 4
             // (Meminta macOS untuk mengosongkan snapshot hingga 1TB dengan prioritas/urgensi tertinggi '4')
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/tmutil")
-            process.arguments = ["thinlocalsnapshots", "/", "1000000000000", "4"]
-            
-            try process.run()
-            process.waitUntilExit()
+            let _ = await runProcess(
+                executableURL: URL(fileURLWithPath: "/usr/bin/tmutil"),
+                arguments: ["thinlocalsnapshots", "/", "1000000000000", "4"],
+                requiresRoot: false
+            )
             
             progressCallback(0.8, "Calculating freed space...")
             
