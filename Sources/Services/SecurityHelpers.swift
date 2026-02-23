@@ -33,8 +33,6 @@ enum SecurityHelpers {
     /// Validates a path to ensure it does not point to critical system directories
     /// or the application's own bundle. Resolves symlinks before checking.
     static func isPathSafeForDeletion(_ path: String) -> Bool {
-        let fm = FileManager.default
-        
         // Resolve symlinks to get the real target path
         let resolvedURL = URL(fileURLWithPath: path).resolvingSymlinksInPath()
         let realPath = resolvedURL.path
